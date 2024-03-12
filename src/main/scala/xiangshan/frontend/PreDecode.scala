@@ -16,7 +16,7 @@
 
 package xiangshan.frontend
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.rocket.{RVCDecoder, ExpandedInstruction}
 import chisel3.{util, _}
 import chisel3.util._
@@ -103,7 +103,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
 
   val validStart_half, validEnd_half = Wire(Vec(PredictWidth, Bool()))
   val h_validStart_half, h_validEnd_half = Wire(Vec(PredictWidth, Bool()))
-  
+
   val validStart_halfPlus1, validEnd_halfPlus1 = Wire(Vec(PredictWidth, Bool()))
   val h_validStart_halfPlus1, h_validEnd_halfPlus1 = Wire(Vec(PredictWidth, Bool()))
 
@@ -121,23 +121,6 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
   validEnd_halfPlus1.map(_ := false.B)
   h_validStart_halfPlus1.map(_ := false.B)
   h_validEnd_halfPlus1.map(_ := false.B)
-
-  dontTouch(validStart_half)
-  dontTouch(validEnd_half)
-  dontTouch(h_validStart_half)
-  dontTouch(h_validEnd_half)
-  dontTouch(validStart_halfPlus1)
-  dontTouch(validEnd_halfPlus1)
-  dontTouch(h_validStart_halfPlus1)
-  dontTouch(h_validEnd_halfPlus1)
-  dontTouch(validStart_diff)
-  dontTouch(validEnd_diff)
-  dontTouch(h_validStart_diff)
-  dontTouch(h_validEnd_diff)
-  dontTouch(validStart)
-  dontTouch(validEnd)
-  dontTouch(h_validStart)
-  dontTouch(h_validEnd)
 
   val rawInsts = if (HasCExtension) VecInit((0 until PredictWidth).map(i => Cat(data(i+1), data(i))))
   else         VecInit((0 until PredictWidth).map(i => data(i)))
@@ -160,7 +143,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
 
     io.out.pd(i).valid         := validStart(i)
     io.out.pd(i).isRVC         := currentIsRVC(i)
-    
+
     // for diff purpose only
     io.out.pd(i).brType        := brType
     io.out.pd(i).isCall        := isCall
@@ -219,7 +202,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
   }
   validStart_halfPlus1(PredictWidth / 2) := false.B // could be true but when true we select half, not halfPlus1
   validEnd_halfPlus1(PredictWidth / 2) := true.B
-  
+
   // assume h_PredictWidth / 2 is an end
   h_validStart_halfPlus1(PredictWidth / 2) := false.B // could be true but when true we select half, not halfPlus1
   h_validEnd_halfPlus1(PredictWidth / 2) := true.B
@@ -274,7 +257,7 @@ class F3Predecoder(implicit p: Parameters) extends XSModule with HasPdConst {
     val in = Input(new IfuToF3PreDecode)
     val out = Output(new F3PreDecodeResp)
   })
-  io.out.pd.zipWithIndex.map{ case (pd,i) => 
+  io.out.pd.zipWithIndex.map{ case (pd,i) =>
     pd.valid := DontCare
     pd.isRVC := DontCare
     pd.brType := brInfo(io.in.instr(i))(0)
@@ -291,9 +274,9 @@ class RVCExpander(implicit p: Parameters) extends XSModule {
   })
 
   if (HasCExtension) {
-    io.out := new RVCDecoder(io.in, XLEN).decode
+    io.out := new RVCDecoder(io.in, XLEN, useAddiForMv = true).decode
   } else {
-    io.out := new RVCDecoder(io.in, XLEN).passthrough
+    io.out := new RVCDecoder(io.in, XLEN, useAddiForMv = true).passthrough
   }
 }
 
@@ -333,7 +316,7 @@ class PredCheckerResp(implicit p: Parameters) extends XSBundle with HasPdConst {
     val fixedTarget = Vec(PredictWidth, UInt(VAddrBits.W))
     val jalTarget = Vec(PredictWidth, UInt(VAddrBits.W))
     val fixedMissPred = Vec(PredictWidth,  Bool())
-    val faultType   = Vec(PredictWidth, new CheckInfo) 
+    val faultType   = Vec(PredictWidth, new CheckInfo)
   }
 }
 
@@ -396,8 +379,8 @@ class PredChecker(implicit p: Parameters) extends XSModule with HasPdConst {
 
   io.out.stage2Out.faultType.zipWithIndex.map{case(faultType, i) => faultType.value := Mux(jalFaultVecNext(i) , FaultType.jalFault ,
                                                                              Mux(retFaultVecNext(i), FaultType.retFault ,
-                                                                             Mux(targetFault(i), FaultType.targetFault , 
-                                                                             Mux(notCFITakenNext(i) , FaultType.notCFIFault, 
+                                                                             Mux(targetFault(i), FaultType.targetFault ,
+                                                                             Mux(notCFITakenNext(i) , FaultType.notCFIFault,
                                                                              Mux(invalidTakenNext(i), FaultType.invalidTaken,  FaultType.noFault)))))}
 
   io.out.stage2Out.fixedMissPred.zipWithIndex.map{case(missPred, i ) => missPred := jalFaultVecNext(i) || retFaultVecNext(i) || notCFITakenNext(i) || invalidTakenNext(i) || targetFault(i)}
@@ -414,7 +397,7 @@ class FrontendTrigger(implicit p: Parameters) extends XSModule {
 
     val pds           = Input(Vec(PredictWidth, new PreDecodeInfo))
     val pc            = Input(Vec(PredictWidth, UInt(VAddrBits.W)))
-    val data          = if(HasCExtension) Input(Vec(PredictWidth + 1, UInt(16.W))) 
+    val data          = if(HasCExtension) Input(Vec(PredictWidth + 1, UInt(16.W)))
                         else Input(Vec(PredictWidth, UInt(32.W)))
   })
 
@@ -433,30 +416,49 @@ class FrontendTrigger(implicit p: Parameters) extends XSModule {
   XSDebug(triggerEnable.asUInt.orR, "Debug Mode: At least one frontend trigger is enabled\n")
 
   for (i <- 0 until 4) {PrintTriggerInfo(triggerEnable(i), tdata(i))}
+  val triggerHitVec = Wire(Vec(4, Vec(PredictWidth, Bool())))
+
+  for (j <- 1 until 4) {
+    // port 0 support inst cmp while others don't
+    triggerHitVec(j) := TriggerCmpConsecutive(io.pc, tdata(j).tdata2, tdata(j).matchType, triggerEnable(j), VAddrBits)
+  }
 
   for (i <- 0 until PredictWidth) {
     val currentPC = io.pc(i)
     val currentIsRVC = io.pds(i).isRVC
     val inst = WireInit(rawInsts(i))
-    val triggerHitVec = Wire(Vec(4, Bool()))
+    val triggerHitVec_diff = Wire(Vec(4, Bool()))
+
+    for (j <- 0 until 1) {
+      triggerHitVec(j)(i) :=  TriggerCmp(Mux(tdata(j).select, Mux(currentIsRVC, inst(15, 0), inst), currentPC), 
+                                      tdata(j).tdata2, tdata(j).matchType, triggerEnable(j))
+      triggerHitVec_diff(j) := triggerHitVec(j)(i)
+    }
+    for (j <- 1 until 4) {
+      triggerHitVec_diff(j) := TriggerCmp(currentPC, tdata(j).tdata2, tdata(j).matchType, triggerEnable(j))
+    }
 
     for (j <- 0 until 4) {
-      triggerHitVec(j) := Mux(tdata(j).select, TriggerCmp(Mux(currentIsRVC, inst(15, 0), inst), tdata(j).tdata2, tdata(j).matchType, triggerEnable(j)),
-        TriggerCmp(currentPC, tdata(j).tdata2, tdata(j).matchType, triggerEnable(j)))
+      XSError(triggerHitVec_diff(j) =/= triggerHitVec(j)(i), p"triggerHitVec_diff(${j}) mismatch\n")
+    }
+
+    val frontendHit = Wire(Vec(4, Bool()))
+    for (j <- 0 until 4) {
+      frontendHit(j) := triggerHitVec(j)(i)
     }
 
     // fix chains this could be moved further into the pipeline
-    io.triggered(i).frontendHit := triggerHitVec
+    io.triggered(i).frontendHit := frontendHit
     val enableChain = tdata(0).chain
     when(enableChain){
-      io.triggered(i).frontendHit(0) := triggerHitVec(0) && triggerHitVec(1) && (tdata(0).timing === tdata(1).timing)
-      io.triggered(i).frontendHit(1) := triggerHitVec(0) && triggerHitVec(1) && (tdata(0).timing === tdata(1).timing)
+      io.triggered(i).frontendHit(0) := triggerHitVec(0)(i) && triggerHitVec(1)(i) && (tdata(0).timing === tdata(1).timing)
+      io.triggered(i).frontendHit(1) := triggerHitVec(0)(i) && triggerHitVec(1)(i) && (tdata(0).timing === tdata(1).timing)
     }
     for(j <- 0 until 2) {
-      io.triggered(i).backendEn(j) := Mux(tdata(j+2).chain, triggerHitVec(j+2), true.B)
-      io.triggered(i).frontendHit(j+2) := !tdata(j+2).chain && triggerHitVec(j+2) // temporary workaround
+      io.triggered(i).backendEn(j) := Mux(tdata(j+2).chain, triggerHitVec(j+2)(i), true.B)
+      io.triggered(i).frontendHit(j+2) := !tdata(j+2).chain && triggerHitVec(j+2)(i) // temporary workaround
     }
     XSDebug(io.triggered(i).getHitFrontend, p"Debug Mode: Predecode Inst No. ${i} has trigger hit vec ${io.triggered(i).frontendHit}" +
       p"and backend en ${io.triggered(i).backendEn}\n")
-  }  
+  }
 }

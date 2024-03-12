@@ -1,0 +1,95 @@
+emu compiled at Mar  1 2024, 13:38:33
+Using seed = 7583
+Using simulated 32768B flash
+isWriteFetchToIBufferTable0 = 0
+isWriteIfuWbToFtqTable0 = 0
+isWriteFTQTable0 = 0
+isWriteBankConflictTable0 = 0
+isWriteL1MissQMissTable0 = 0
+isWriteLoadMissTable0 = 0
+isFirstHitWrite0 = 0
+isWriteLoadAccessTable0 = 0
+isWriteL2TlbPrefetchTable0 = 0
+isWriteL1TlbTable0 = 0
+isWritePageCacheTable0 = 0
+isWritePTWTable0 = 0
+isWriteL2TlbMissQueueTable0 = 0
+CorrectMissTrain0 = 0
+isWriteInstInfoTable0 = 0
+l1_stride_ratio0 = 2
+l2_stride_ratio0 = 5
+enableL3StreamPrefetch0 = 0
+ColdDownThreshold_0 = 12
+nMaxPrefetchEntry0 = 14
+always_update0 = 1
+StoreWaitThreshold_0 = 0
+enableDynamicPrefetcher0 = 1
+StoreBufferThreshold_0 = 7
+StoreBufferBase_0 = 4
+ForceWriteUpper_0 = 60
+ForceWriteLower_0 = 55
+enableL1StreamPrefetcher0 = 1
+l2DepthRatio0 = 2
+l3DepthRatio0 = 3
+depth0 = 32
+Using simulated 8192MB RAM
+The image is /nfs-nvme/home/share/checkpoints_profiles/spec06_rv64gcb_o2_20m/take_cpt/xalancbmk_882220000000_0.083836/0/_882220000000_.gz
+Gzip file detected and loading image from extracted gz file
+DRAMsim3 memory system initialized.
+Open database successfully
+L2PrefetchCoverage_rolling_0 table created successfully!
+L2PrefetchAccuracyBOP_rolling_0 table created successfully!
+L2PrefetchCoverageBOP_rolling_0 table created successfully!
+L2PrefetchLate_rolling_0 table created successfully!
+L2PrefetchCoverageSMS_rolling_0 table created successfully!
+TLLog table created successfully!
+L2MP table created successfully!
+L2PrefetchAccuracyTP_rolling_0 table created successfully!
+L2PrefetchAccuracySMS_rolling_0 table created successfully!
+L2PrefetchAccuracy_rolling_0 table created successfully!
+L2PrefetchCoverageTP_rolling_0 table created successfully!
+The reference model is /nfs/home/mayuexiao/XiangShan/ready-to-run/riscv64-nemu-interpreter-so
+[FORK_INFO pid(825616)] enable fork debugging...
+The first instruction of core 0 has commited. Difftest enabled. 
+remembers ground begs forgive teach sees although contrary knock cured direct conjurer power sealed owes admiring side stabs assume garland paris rivers boldness nose unique gaming envenom mannerly erewhile alas word trick supper forgot fiery saint wand calf deceas gar closet forbear advantage always transformed send effect commanded <emph> deserve made wot </emph> towards lord messengers plate cunning mine juice ten control thankful patroclus satisfied stratagem freely employ away paste swell betwixt gloves steps commendations split chas able hell amazement selling seeks hold blest windsor 
+<p>Encrypted Version</p>
+ rosdniw tselb dloh skees gnilles tnemezama lleh elba sahc tilps snoitadnemmoc spets sevolg txiwteb llews etsap yawa yolpme yleerf megatarts deifsitas sulcortap lufknaht lortnoc net eciuj enim gninnuc etalp sregnessem drol sdrawot  tow edam evresed  dednammoc tceffe dnes demrofsnart syawla egatnavda raebrof tesolc rag saeced flac dnaw tnias yreif togrof reppus kcirt drow sala elihwere ylrennam monevne gnimag euqinu eson ssendlob srevir sirap dnalrag emussa sbats edis gnirimda sewo delaes rewop rerujnoc tcerid deruc kconk yrartnoc hguohtla sees hcaet evigrof sgeb dnuorg srebmemer
+<br>
+</td><td>6</td>
+</tr>
+<tr valign="top">
+<td>person5153</td><td>person4929</td><td>item4128</td><td>24.76</td><td>11/23/2000</td><td>1</td><td>person2209</td><td>(I) 
+regan holiness banner dead army legate tremble disliken varlet abuse most unique advance soft monsieur person norfolk musters adam dominions assume <b> lesser neigh </b> 
+<p>Encrypted Version</p>
+  hgien ressel  emussa snoinimod mada sretsum klofron nosrep rueisnom tfos ecnavda euqinu tsom esuba telrav nekilsid elbmert etagel ymra daed rennab sseniloh nager
+<br>
+</td><td>6</td>
+</tr>
+<tr valign="top">
+<td>person7189</td><td>person7061</td><td>item6631</td><td>557</td><td>11/23/2000</td><td>1</td><td>person8103</td><td>(I) 
+Warmup finished. The performance counters will be dumped and then reset.
+make remorse scarcity pompey chuck the knowing osw borrows othello rapier doubtful rider residence maidenhead fear slanderous violence young quick starts deathbed wisdom weed gentlemen breaking lately coldly having tedious bed seasons unyoke calls stanley wrongs esteemed countenance mountains itself child polack engine foreknowing enobarbus succeed wasted not dumb hazelnut pestilent fashion rous token could swear perish ratcliff beg mowbray contents preventions birth betray waywarder octavius countenance embrace senses virtues tow sharp fair basket remov lusty safer virtue scold desire idol hermione godhead value zeal dire sighs courses scurvy bondage raze devouring verg sickly toast throne monarch affectionate bread woodman mistresses fierce curled fought jaded faith ominous clout son mother majesties cost 
+<p>Encrypted Version</p>
+ tsoc seitsejam rehtom nos tuolc suonimo htiaf dedaj thguof delruc ecreif sessertsim namdoow daerb etanoitceffa hcranom enorht tsaot ylkcis grev gniruoved ezar egadnob yvrucs sesruoc shgis erid laez eulav daehdog enoimreh lodi erised dlocs eutriv refas ytsul vomer teksab riaf prahs wot seutriv sesnes ecarbme ecnanetnuoc suivatco redrawyaw yarteb htrib snoitneverp stnetnoc yarbwom geb ffilctar hsirep raews dluoc nekot suor noihsaf tnelitsep tunlezah bmud ton detsaw deeccus subrabone gniwonkerof enigne kcalop dlihc flesti sniatnuom ecnanetnuoc demeetse sgnorw yelnats sllac ekoynu snosaes deb suoidet gnivah yldloc yletal gnikaerb nemeltneg deew modsiw debhtaed strats kciuq gnuoy ecneloiv suorednals raef daehnediam ecnediser redir luftbuod reipar ollehto sworrob wso gniwonk eht kcuhc yepmop yticracs esromer ekam
+<br>
+</td><td>4</td>
+</tr>
+<tr valign="top">
+<td>person6960</td><td>person4057</td><td>item9299</td><td>156.4</td><td>11/23/2000</td><td>1</td><td>person6301</td><td>(0) 
+purpose chances let hereafter stain pomp vantage world leisure trot repaid breath uncle pale wooden delicate george inseparable boasted stoup seat forth low underminers ligarius amity thrift fed ward hang something suburbs paid avoid health sceptre argued <i> weeps <emph> sights </emph> plashy haught hiding eas then </i> neat rosemary smiling utterly sixty beam redress maids correction censures waking well fairies bears post preventions terrors entreats humor teller conscience several carlot cliff melancholy stepping beneath royal inward <i> worm favour <emph> crack hourly which born defeat mayst </emph> oph </i> days sides revolt effeminate doubting respected residence 
+<p>Encrypted Version</p>
+ ecnediser detcepser gnitbuod etanimeffe tlover sedis syad  hpo  tsyam taefed nrob hcihw ylruoh kcarc  ruovaf mrow  drawni layor htaeneb gnippets ylohcnalem ffilc tolrac lareves ecneicsnoc rellet romuh staertne srorret snoitneverp tsop sraeb seiriaf llew gnikaw serusnec noitcerroc sdiam sserder maeb ytxis ylrettu gnilims yramesor taen  neht sae gnidih thguah yhsalp  sthgis  speew  deugra ertpecs htlaeh diova diap sbrubus gnihtemos gnah draw def tfirht ytima suiragil srenimrednu wol htrof taes puots detsaob elbarapesni egroeg etaciled nedoow elap elcnu htaerb diaper tort erusiel dlrow egatnav pmop niats retfaereh tel secnahc esoprup
+<br>
+<br>(I) <p>Encrypted Version</p>
+<br>
+<br>
+</td><td>3</td>
+</tr>
+<tr valign="top">
+[FORK_INFO pid(825616)] clear processes...
+Core 0: [33mEXCEEDING CYCLE/INSTR LIMIT at pc = 0xab6c8
+[0m[35minstrCnt = 40,000,003, cycleCnt = 21,986,024, IPC = 1.819338
+[0msaving memdb to /nfs/home/mayuexiao/XiangShan/build/2024-03-06@23:09:18.db ...
+[34mSeed=7583 Guest cycle spent: 21,986,028 (this will be different from cycleCnt if emu loads a snapshot)
+[0m[34mHost time spent: 7,230,980ms
+[0m

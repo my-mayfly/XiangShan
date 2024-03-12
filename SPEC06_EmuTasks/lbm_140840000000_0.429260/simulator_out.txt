@@ -1,0 +1,61 @@
+emu compiled at Mar  1 2024, 13:38:33
+Using seed = 2211
+Using simulated 32768B flash
+isWriteFetchToIBufferTable0 = 0
+isWriteIfuWbToFtqTable0 = 0
+isWriteFTQTable0 = 0
+isWriteBankConflictTable0 = 0
+isWriteL1MissQMissTable0 = 0
+isWriteLoadMissTable0 = 0
+isFirstHitWrite0 = 0
+isWriteLoadAccessTable0 = 0
+isWriteL2TlbPrefetchTable0 = 0
+isWriteL1TlbTable0 = 0
+isWritePageCacheTable0 = 0
+isWritePTWTable0 = 0
+isWriteL2TlbMissQueueTable0 = 0
+CorrectMissTrain0 = 0
+isWriteInstInfoTable0 = 0
+l1_stride_ratio0 = 2
+l2_stride_ratio0 = 5
+enableL3StreamPrefetch0 = 0
+ColdDownThreshold_0 = 12
+nMaxPrefetchEntry0 = 14
+always_update0 = 1
+StoreWaitThreshold_0 = 0
+enableDynamicPrefetcher0 = 1
+StoreBufferThreshold_0 = 7
+StoreBufferBase_0 = 4
+ForceWriteUpper_0 = 60
+ForceWriteLower_0 = 55
+enableL1StreamPrefetcher0 = 1
+l2DepthRatio0 = 2
+l3DepthRatio0 = 3
+depth0 = 32
+Using simulated 8192MB RAM
+The image is /nfs-nvme/home/share/checkpoints_profiles/spec06_rv64gcb_o2_20m/take_cpt/lbm_140840000000_0.429260/0/_140840000000_.gz
+Gzip file detected and loading image from extracted gz file
+DRAMsim3 memory system initialized.
+Open database successfully
+L2PrefetchCoverage_rolling_0 table created successfully!
+L2PrefetchAccuracyBOP_rolling_0 table created successfully!
+L2PrefetchCoverageBOP_rolling_0 table created successfully!
+L2PrefetchLate_rolling_0 table created successfully!
+L2PrefetchCoverageSMS_rolling_0 table created successfully!
+TLLog table created successfully!
+L2MP table created successfully!
+L2PrefetchAccuracyTP_rolling_0 table created successfully!
+L2PrefetchAccuracySMS_rolling_0 table created successfully!
+L2PrefetchAccuracy_rolling_0 table created successfully!
+L2PrefetchCoverageTP_rolling_0 table created successfully!
+The reference model is /nfs/home/mayuexiao/XiangShan/ready-to-run/riscv64-nemu-interpreter-so
+[FORK_INFO pid(4189289)] enable fork debugging...
+The first instruction of core 0 has commited. Difftest enabled. 
+Warmup finished. The performance counters will be dumped and then reset.
+[FORK_INFO pid(4189289)] clear processes...
+Core 0: [33mEXCEEDING CYCLE/INSTR LIMIT at pc = 0x10aaa
+[0m[35minstrCnt = 40,000,003, cycleCnt = 19,857,597, IPC = 2.014343
+[0msaving memdb to /nfs/home/mayuexiao/XiangShan/build/2024-03-06@19:40:55.db ...
+[34mSeed=2211 Guest cycle spent: 19,857,601 (this will be different from cycleCnt if emu loads a snapshot)
+[0m[34mHost time spent: 9,509,542ms
+[0m

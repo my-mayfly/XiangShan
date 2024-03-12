@@ -16,17 +16,14 @@
 
 package top
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import device.{AXI4MemorySlave, SimJTAG}
 import difftest._
 import freechips.rocketchip.diplomacy.{DisableMonitors, LazyModule}
-import utility.FileRegisters
-import utility.ChiselDB
-import utility.GTimer
+import utility.{ChiselDB, Constantin, FileRegisters, GTimer}
 import xiangshan.DebugOptionsKey
-import utility.Constantin
 
 class SimTop(implicit p: Parameters) extends Module {
   val debugOpts = p(DebugOptionsKey)
@@ -50,7 +47,7 @@ class SimTop(implicit p: Parameters) extends Module {
     dynamicLatency = debugOpts.UseDRAMSim
   )
   val simAXIMem = Module(l_simAXIMem.module)
-  l_simAXIMem.io_axi4 <> soc.memory
+  l_simAXIMem.io_axi4.getWrappedValue :<>= soc.memory.waiveAll
 
   soc.io.clock := clock.asBool
   soc.io.reset := reset.asAsyncReset
@@ -78,21 +75,17 @@ class SimTop(implicit p: Parameters) extends Module {
   soc.io.systemjtag.part_number := 0.U(16.W)
   soc.io.systemjtag.version := 0.U(4.W)
 
-  val io = IO(new Bundle(){
-    val logCtrl = new LogCtrlIO
-    val perfInfo = new PerfInfoIO
-    val uart = new UARTIO
-  })
+  val difftest = DifftestModule.finish("XiangShan")
 
-  simMMIO.io.uart <> io.uart
+  simMMIO.io.uart <> difftest.uart
 
-  val timer = if (!debugOpts.FPGAPlatform && (debugOpts.EnableDebug || debugOpts.EnablePerfDebug)) GTimer() else WireDefault(0.U(64.W))
-  val logEnable =
-    if (!debugOpts.FPGAPlatform && (debugOpts.EnableDebug || debugOpts.EnablePerfDebug))
-      (timer >= io.logCtrl.log_begin) && (timer < io.logCtrl.log_end)
-    else WireDefault(false.B)
-  val clean = if (!debugOpts.FPGAPlatform && debugOpts.EnablePerfDebug) WireDefault(io.perfInfo.clean) else WireDefault(false.B)
-  val dump = if (!debugOpts.FPGAPlatform && debugOpts.EnablePerfDebug) WireDefault(io.perfInfo.dump) else WireDefault(false.B)
+  val hasPerf = !debugOpts.FPGAPlatform && debugOpts.EnablePerfDebug
+  val hasLog = !debugOpts.FPGAPlatform && debugOpts.EnableDebug
+  val hasPerfLog = hasPerf || hasLog
+  val timer = if (hasPerfLog) GTimer() else WireDefault(0.U(64.W))
+  val logEnable = if (hasPerfLog) WireDefault(difftest.logCtrl.enable(timer)) else WireDefault(false.B)
+  val clean = if (hasPerf) WireDefault(difftest.perfCtrl.clean) else WireDefault(false.B)
+  val dump = if (hasPerf) WireDefault(difftest.perfCtrl.dump) else WireDefault(false.B)
 
   dontTouch(timer)
   dontTouch(logEnable)
@@ -101,28 +94,24 @@ class SimTop(implicit p: Parameters) extends Module {
 }
 
 object SimTop extends App {
-  override def main(args: Array[String]): Unit = {
-    // Keep this the same as TopMain except that SimTop is used here instead of XSTop
-    val (config, firrtlOpts, firrtlComplier, firtoolOpts) = ArgParser.parse(args)
+  // Keep this the same as TopMain except that SimTop is used here instead of XSTop
+  val (config, firrtlOpts, firtoolOpts) = ArgParser.parse(args)
 
-    // tools: init to close dpi-c when in fpga
-    val envInFPGA = config(DebugOptionsKey).FPGAPlatform
-    val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
-    val enableConstantin = config(DebugOptionsKey).EnableConstantin
-    Constantin.init(enableConstantin && !envInFPGA)
-    ChiselDB.init(enableChiselDB && !envInFPGA)
+  // tools: init to close dpi-c when in fpga
+  val envInFPGA = config(DebugOptionsKey).FPGAPlatform
+  val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
+  val enableConstantin = config(DebugOptionsKey).EnableConstantin
+  Constantin.init(enableConstantin && !envInFPGA)
+  ChiselDB.init(enableChiselDB && !envInFPGA)
 
-    Generator.execute(
-      firrtlOpts,
-      DisableMonitors(p => new SimTop()(p))(config),
-      firrtlComplier,
-      firtoolOpts
-    )
+  Generator.execute(
+    firrtlOpts,
+    DisableMonitors(p => new SimTop()(p))(config),
+    firtoolOpts
+  )
 
-    // tools: write cpp files
-    ChiselDB.addToFileRegisters
-    Constantin.addToFileRegisters
-    FileRegisters.write(fileDir = "./build")
-    DifftestModule.finish("XiangShan")
-  }
+  // tools: write cpp files
+  ChiselDB.addToFileRegisters
+  Constantin.addToFileRegisters
+  FileRegisters.write(fileDir = "./build")
 }

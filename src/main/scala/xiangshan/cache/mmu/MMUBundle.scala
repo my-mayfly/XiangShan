@@ -16,7 +16,7 @@
 
 package xiangshan.cache.mmu
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import xiangshan._
@@ -209,7 +209,7 @@ class TlbEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parameters) 
     this.tag := {if (pageNormal) Cat(item.entry.tag, OHToUInt(item.pteidx)) else item.entry.tag(sectorvpnLen - 1, vpnnLen - sectortlbwidth)}
     this.asid := asid
     val inner_level = item.entry.level.getOrElse(0.U)
-    this.level.map(_ := { if (pageNormal && pageSuper) MuxLookup(inner_level, 0.U, Seq(
+    this.level.map(_ := { if (pageNormal && pageSuper) MuxLookup(inner_level, 0.U)(Seq(
       0.U -> 3.U,
       1.U -> 1.U,
       2.U -> 0.U ))
@@ -341,7 +341,7 @@ class TlbSectorEntry(pageNormal: Boolean, pageSuper: Boolean)(implicit p: Parame
     this.tag := {if (pageNormal) item.entry.tag else item.entry.tag(sectorvpnLen - 1, vpnnLen - sectortlbwidth)}
     this.asid := asid
     val inner_level = item.entry.level.getOrElse(0.U)
-    this.level.map(_ := { if (pageNormal && pageSuper) MuxLookup(inner_level, 0.U, Seq(
+    this.level.map(_ := { if (pageNormal && pageSuper) MuxLookup(inner_level, 0.U)(Seq(
                                                         0.U -> 3.U,
                                                         1.U -> 1.U,
                                                         2.U -> 0.U ))
@@ -587,6 +587,26 @@ class TlbPtwIOwithMemIdx(Width: Int = 1)(implicit p: Parameters) extends TlbBund
   }
 }
 
+class TlbHintReq(implicit p: Parameters) extends TlbBundle {
+  val id = Output(UInt(log2Up(loadfiltersize).W))
+  val full = Output(Bool())
+}
+
+class TLBHintResp(implicit p: Parameters) extends TlbBundle {
+  val id = Output(UInt(log2Up(loadfiltersize).W))
+  // When there are multiple matching entries for PTW resp in filter
+  // e.g. vaddr 0, 0x80000000. vaddr 1, 0x80010000
+  // these two vaddrs are not in a same 4K Page, so will send to ptw twice
+  // However, when ptw resp, if they are in a 1G or 2M huge page
+  // The two entries will both hit, and both need to replay
+  val replay_all = Output(Bool())
+}
+
+class TlbHintIO(implicit p: Parameters) extends TlbBundle {
+  val req = Vec(exuParameters.LduCnt, new TlbHintReq)
+  val resp = ValidIO(new TLBHintResp)
+}
+
 class MMUIOBaseBundle(implicit p: Parameters) extends TlbBundle {
   val sfence = Input(new SfenceBundle)
   val csr = Input(new TlbCsrBundle)
@@ -620,7 +640,7 @@ class TlbIO(Width: Int, nRespDups: Int = 1, q: TLBParameters)(implicit p: Parame
   val refill_to_mem = Output(new TlbRefilltoMemIO())
   val replace = if (q.outReplace) Flipped(new TlbReplaceIO(Width, q)) else null
   val pmp = Vec(Width, ValidIO(new PMPReqBundle()))
-
+  val tlbreplay = Vec(Width, Output(Bool()))
 }
 
 class VectorTlbPtwIO(Width: Int)(implicit p: Parameters) extends TlbBundle {
@@ -712,7 +732,7 @@ class PtwEntry(tagLen: Int, hasPerm: Boolean = false, hasLevel: Boolean = false)
 
   def genPPN(vpn: UInt): UInt = {
     if (!hasLevel) ppn
-    else MuxLookup(level.get, 0.U, Seq(
+    else MuxLookup(level.get, 0.U)(Seq(
           0.U -> Cat(ppn(ppn.getWidth-1, vpnnLen*2), vpn(vpnnLen*2-1, 0)),
           1.U -> Cat(ppn(ppn.getWidth-1, vpnnLen), vpn(vpnnLen-1, 0)),
           2.U -> ppn)
@@ -964,7 +984,7 @@ class PtwSectorResp(implicit p: Parameters) extends PtwBundle {
   val af = Bool()
 
   def genPPN(vpn: UInt): UInt = {
-    MuxLookup(entry.level.get, 0.U, Seq(
+    MuxLookup(entry.level.get, 0.U)(Seq(
       0.U -> Cat(entry.ppn(entry.ppn.getWidth-1, vpnnLen * 2 - sectortlbwidth), vpn(vpnnLen*2-1, 0)),
       1.U -> Cat(entry.ppn(entry.ppn.getWidth-1, vpnnLen - sectortlbwidth), vpn(vpnnLen-1, 0)),
       2.U -> Cat(entry.ppn(entry.ppn.getWidth-1, 0), ppn_low(vpn(sectortlbwidth - 1, 0))))

@@ -36,7 +36,7 @@ import utils._
 import utility._
 
 import scala.math.max
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3.util.BitPat.bitPatToUInt
 import xiangshan.backend.exu.ExuConfig
 import xiangshan.backend.fu.PMPEntry
@@ -692,4 +692,5 @@ class StallReasonIO(width: Int) extends Bundle {
 // custom l2 - l1 interface
 class L2ToL1Hint(implicit p: Parameters) extends XSBundle with HasDCacheParameters {
   val sourceId = UInt(log2Up(cfg.nMissEntries).W)    // tilelink sourceID -> mshr id
+  val isKeyword = Bool()                             // miss entry keyword -> L1 load queue replay
 }

@@ -16,7 +16,7 @@
 
 package xiangshan.backend.dispatch
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
@@ -197,6 +197,12 @@ class Dispatch2RsDistinctImp(outer: Dispatch2Rs)(implicit p: Parameters) extends
     val isStoreArrays = Seq.tabulate(io.in.length)(Seq.tabulate(_)(i => io.in(i).valid && isStore(i)))
     val blockLoads = isLoadArrays.map(PopCount(_) >= LoadPipelineWidth.U)
     val blockStores = isStoreArrays.map(PopCount(_) >= StorePipelineWidth.U)
+
+    for (i <- 0 until enqLsq.req.length) {
+      enqLsq.needAlloc(i) := false.B
+      enqLsq.req(i).valid := false.B
+      enqLsq.req(i).bits := DontCare
+    }
 
     for (i <- io.in.indices) {
       is_blocked(i) := (

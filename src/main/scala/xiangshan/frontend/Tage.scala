@@ -16,7 +16,7 @@
 
 package xiangshan.frontend
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import xiangshan._
@@ -137,8 +137,7 @@ trait TBTParams extends HasXSParameter with TageParams {
 
 class TageBTable(implicit p: Parameters) extends XSModule with TBTParams{
   val io = IO(new Bundle {
-    val s0_fire = Input(Bool())
-    val s0_pc   = Input(UInt(VAddrBits.W))
+    val req = Flipped(DecoupledIO(UInt(VAddrBits.W))) // s0_pc
     val s1_cnt     = Output(Vec(numBr,UInt(2.W)))
     val update_mask = Input(Vec(TageBanks, Bool()))
     val update_pc = Input(UInt(VAddrBits.W))
@@ -149,26 +148,44 @@ class TageBTable(implicit p: Parameters) extends XSModule with TBTParams{
 
   val bimAddr = new TableAddr(log2Up(BtSize), instOffsetBits)
 
-  val bt = Module(new SRAMTemplate(UInt(2.W), set = BtSize, way=numBr, shouldReset = true, holdRead = true, bypassWrite = true))
+  // Physical SRAM Size
+  val SRAMSize = 512
+  val foldWidth = BtSize / SRAMSize
 
+  val bt = Module(
+    new FoldedSRAMTemplate(
+      UInt(2.W),
+      set = BtSize,
+      width = foldWidth,
+      way = numBr,
+      shouldReset = false,
+      holdRead = true,
+      bypassWrite = true
+    ))
+
+  // Power-on reset to weak taken
   val doing_reset = RegInit(true.B)
   val resetRow = RegInit(0.U(log2Ceil(BtSize).W))
   resetRow := resetRow + doing_reset
   when (resetRow === (BtSize-1).U) { doing_reset := false.B }
 
-  val s0_idx = bimAddr.getIdx(io.s0_pc)
-  bt.io.r.req.valid := io.s0_fire
+  // Require power-on reset done before handling any request
+  io.req.ready := !doing_reset
+
+  val s0_pc = io.req.bits
+  val s0_fire = io.req.valid
+  val s0_idx = bimAddr.getIdx(s0_pc)
+  bt.io.r.req.valid := s0_fire
   bt.io.r.req.bits.setIdx := s0_idx
 
   val s1_read = bt.io.r.resp.data
-  val s1_idx = RegEnable(s0_idx, io.s0_fire)
+  val s1_idx = RegEnable(s0_idx, s0_fire)
 
 
   val per_br_ctr = VecInit((0 until numBr).map(i => Mux1H(UIntToOH(get_phy_br_idx(s1_idx, i), numBr), s1_read)))
   io.s1_cnt := per_br_ctr
 
   // Update logic
-
   val u_idx = bimAddr.getIdx(io.update_pc)
 
   val newCtrs = Wire(Vec(numBr, UInt(2.W))) // physical bridx
@@ -207,13 +224,13 @@ class TageBTable(implicit p: Parameters) extends XSModule with TBTParams{
 
   val updateWayMask = VecInit((0 until numBr).map(pi =>
     (0 until numBr).map(li =>
-      io.update_mask(li) && get_phy_br_idx(u_idx, li) === pi.U  
+      io.update_mask(li) && get_phy_br_idx(u_idx, li) === pi.U
     ).reduce(_||_)
   )).asUInt
 
   bt.io.w.apply(
     valid = io.update_mask.reduce(_||_) || doing_reset,
-    data = Mux(doing_reset, VecInit(Seq.fill(numBr)(2.U(2.W))), newCtrs),
+    data = Mux(doing_reset, VecInit(Seq.fill(numBr)(2.U(2.W))), newCtrs), // Weak taken
     setIdx = Mux(doing_reset, resetRow, u_idx),
     waymask = Mux(doing_reset, Fill(numBr, 1.U(1.W)).asUInt, updateWayMask)
   )
@@ -239,28 +256,22 @@ class TageTable
   }
 
 
-  val SRAM_SIZE = 256 // physical size
-  require(nRows % SRAM_SIZE == 0)
+  // Physical SRAM size
+  val bankSRAMSize = 512
+  val uSRAMSize = 256
+  require(nRows % bankSRAMSize == 0)
   require(isPow2(numBr))
   val nRowsPerBr = nRows / numBr
-  val nBanks = 8
+  val nBanks = 4 // Tage banks
   val bankSize = nRowsPerBr / nBanks
-  val bankFoldWidth = if (bankSize >= SRAM_SIZE) bankSize / SRAM_SIZE else 1
-  val uFoldedWidth = nRowsPerBr / SRAM_SIZE
-  val uWays = uFoldedWidth * numBr
-  val uRows = SRAM_SIZE
-  if (bankSize < SRAM_SIZE) {
+  val bankFoldWidth = if (bankSize >= bankSRAMSize) bankSize / bankSRAMSize else 1
+  val uFoldedWidth = nRowsPerBr / uSRAMSize
+  if (bankSize < bankSRAMSize) {
     println(f"warning: tage table $tableIdx has small sram depth of $bankSize")
   }
   val bankIdxWidth = log2Ceil(nBanks)
   def get_bank_mask(idx: UInt) = VecInit((0 until nBanks).map(idx(bankIdxWidth-1, 0) === _.U))
   def get_bank_idx(idx: UInt) = idx >> bankIdxWidth
-  def get_way_in_bank(idx: UInt) =
-    if (log2Ceil(bankFoldWidth) > 0)
-      (idx >> bankIdxWidth)(log2Ceil(bankFoldWidth)-1, 0)
-    else
-      0.U(1.W)
-
 
 
   // bypass entries for tage update
@@ -283,7 +294,7 @@ class TageTable
   }
 
   def inc_ctr(ctr: UInt, taken: Bool): UInt = satUpdate(ctr, TageCtrBits, taken)
-  
+
   if (EnableGHistDiff) {
     val idx_history = compute_folded_ghist(io.req.bits.ghist, log2Ceil(nRowsPerBr))
     val idx_fh = io.req.bits.folded_hist.getHistWithInfo(idxFhInfo)
@@ -325,11 +336,11 @@ class TageTable
   val s1_bank_has_write_on_this_req = RegEnable(VecInit(table_banks.map(_.io.w.req.valid)), io.req.valid)
 
   val resp_invalid_by_write = Wire(Bool())
-  
+
   val tables_r = table_banks.map(_.io.r.resp.data) // s1
   val unconfs = tables_r.map(r => VecInit(r.map(e => WireInit(unconf(e.ctr))))) // do unconf cal in parallel
   val hits = tables_r.map(r => VecInit(r.map(e => e.tag === s1_tag && e.valid && !resp_invalid_by_write))) // do tag compare in parallel
-  
+
   val resp_selected = Mux1H(s1_bank_req_1h, tables_r)
   val unconf_selected = Mux1H(s1_bank_req_1h, unconfs)
   val hit_selected = Mux1H(s1_bank_req_1h, hits)
@@ -362,7 +373,7 @@ class TageTable
   val (update_idx, update_tag) = compute_tag_and_hash(update_unhashed_idx, io.update.folded_hist)
   val update_req_bank_1h = get_bank_mask(update_idx)
   val update_idx_in_bank = get_bank_idx(update_idx)
-  
+
   val per_bank_not_silent_update = Wire(Vec(nBanks, Vec(numBr, Bool()))) // corresponds to physical branches
   val per_bank_update_way_mask =
     VecInit((0 until nBanks).map(b =>
@@ -385,11 +396,18 @@ class TageTable
     )
   }
 
+  // Power-on reset
+  val powerOnResetState = RegInit(true.B)
+  when(us.io.r.req.ready && table_banks.map(_.io.r.req.ready).reduce(_ && _)) {
+    // When all the SRAM first reach ready state, we consider power-on reset is done
+    powerOnResetState := false.B
+  }
+  // Do not use table banks io.r.req.ready directly
+  // All the us & table_banks are single port SRAM, ready := !wen
+  // We do not want write request block the whole BPU pipeline
+  io.req.ready := !powerOnResetState
 
   val bank_conflict = (0 until nBanks).map(b => table_banks(b).io.w.req.valid && s0_bank_req_1h(b)).reduce(_||_)
-  io.req.ready := true.B
-  // io.req.ready := !(io.update.mask && not_silent_update)
-  // io.req.ready := !bank_conflict
   XSPerfAccumulate(f"tage_table_bank_conflict", bank_conflict)
 
   val update_u_idx = update_idx
@@ -407,7 +425,7 @@ class TageTable
   ))
 
   us.io.w.apply(io.update.uMask.reduce(_||_), update_u_wdata, update_u_idx, update_u_way_mask)
-  
+
   // remove silent updates
   def silentUpdate(ctr: UInt, taken: Bool) = {
     ctr.andR && taken || !ctr.orR && !taken
@@ -419,10 +437,10 @@ class TageTable
 
   for (b <- 0 until nBanks) {
     val not_silent_update = per_bank_not_silent_update(b)
-    for (pi <- 0 until numBr) { // physical brIdx 
+    for (pi <- 0 until numBr) { // physical brIdx
       val update_wdata = per_bank_update_wdata(b)(pi)
       val br_lidx = get_lgc_br_idx(update_unhashed_idx, pi.U(log2Ceil(numBr).W))
-      // this 
+      // this
       val wrbypass_io = Mux1H(UIntToOH(br_lidx, numBr), bank_wrbypasses(b).map(_.io))
       val wrbypass_hit = wrbypass_io.hit
       val wrbypass_ctr = wrbypass_io.hit_data(0).bits
@@ -471,7 +489,7 @@ class TageTable
   }
 
   XSPerfAccumulate("tage_table_hits", PopCount(io.resps.map(_.valid)))
-  
+
   for (b <- 0 until nBanks) {
     XSPerfAccumulate(f"tage_table_bank_${b}_update_req", io.update.mask.reduce(_||_) && update_req_bank_1h(b))
     for (i <- 0 until numBr) {
@@ -505,10 +523,10 @@ class TageTable
   }
 
   // ------------------------------Debug-------------------------------------
-  val valids = RegInit(VecInit(Seq.fill(nRows)(false.B)))
+  val valids = RegInit(VecInit(Seq.fill(nRowsPerBr)(false.B)))
   when (io.update.mask.reduce(_||_)) { valids(update_idx) := true.B }
   XSDebug("Table usage:------------------------\n")
-  XSDebug("%d out of %d rows are valid\n", PopCount(valids), nRows.U)
+  XSDebug("%d out of %d rows are valid\n", PopCount(valids), nRowsPerBr.U)
 
 }
 
@@ -538,10 +556,10 @@ class Tage(implicit p: Parameters) extends BaseTage {
     }
   }
   val bt = Module (new TageBTable)
-  bt.io.s0_fire := io.s0_fire(1)
-  bt.io.s0_pc   := s0_pc_dup(1)
+  bt.io.req.valid := io.s0_fire(1)
+  bt.io.req.bits := s0_pc_dup(1)
 
-  val bankTickCtrDistanceToTops = Seq.fill(numBr)(RegInit((1 << (TickWidth-1)).U(TickWidth.W)))
+  val bankTickCtrDistanceToTops = Seq.fill(numBr)(RegInit(((1 << TickWidth) - 1).U(TickWidth.W)))
   val bankTickCtrs = Seq.fill(numBr)(RegInit(0.U(TickWidth.W)))
   val useAltOnNaCtrs = RegInit(
     VecInit(Seq.fill(numBr)(
@@ -578,7 +596,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   val s2_providerResps    = RegEnable(s1_providerResps, io.s1_fire(1))
   // val s2_altProvideds     = RegEnable(s1_altProvideds, io.s1_fire)
   // val s2_altProviders     = RegEnable(s1_altProviders, io.s1_fire)
-  // val s2_altProviderResps = RegEnable(s1_altProviderResps, io.s1_fire)  
+  // val s2_altProviderResps = RegEnable(s1_altProviderResps, io.s1_fire)
   val s2_altUsed          = RegEnable(s1_altUsed, io.s1_fire(1))
   val s2_tageTakens_dup   = io.s1_fire.map(f => RegEnable(s1_tageTakens, f))
   val s2_finalAltPreds    = RegEnable(s1_finalAltPreds, io.s1_fire(1))
@@ -665,12 +683,12 @@ class Tage(implicit p: Parameters) extends BaseTage {
             Fill(TageNTables, s1_provideds(i).asUInt)),
         io.s1_fire(1)
       )
-    
+
     resp_meta.allocates(i) := RegEnable(allocatableSlots, io.s2_fire(1))
 
     val s1_bimCtr = bt.io.s1_cnt(i)
     s1_altUsed(i)       := !provided || providerInfo.use_alt_on_unconf
-    s1_tageTakens(i) := 
+    s1_tageTakens(i) :=
       Mux(s1_altUsed(i),
         s1_bimCtr(1),
         providerInfo.resp.ctr(TageCtrBits-1)
@@ -680,7 +698,8 @@ class Tage(implicit p: Parameters) extends BaseTage {
     s1_useAltOnNa(i)    := providerInfo.use_alt_on_unconf
 
     resp_meta.altUsed(i)    := RegEnable(s2_altUsed(i), io.s2_fire(1))
-    resp_meta.altDiffers(i) := RegEnable(s2_finalAltPreds(i) =/= s2_tageTakens_dup(0)(i), io.s2_fire(1))
+    resp_meta.altDiffers(i) := RegEnable(
+      s2_finalAltPreds(i) =/= s2_providerResps(i).ctr(TageCtrBits - 1), io.s2_fire(1)) // alt != provider
     resp_meta.takens(i)     := RegEnable(s2_tageTakens_dup(0)(i), io.s2_fire(1))
     resp_meta.basecnts(i)   := RegEnable(s2_basecnts(i), io.s2_fire(1))
 
@@ -726,7 +745,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
     XSPerfAccumulate(f"tage_bank_${i}_use_alt_on_na_ctr_updated", hasUpdate && updateAltDiffers && updateProvided && updateProviderWeak)
     XSPerfAccumulate(f"tage_bank_${i}_use_alt_on_na_ctr_inc", hasUpdate && updateAltDiffers && updateProvided && updateProviderWeak &&  updateAltCorrect)
     XSPerfAccumulate(f"tage_bank_${i}_use_alt_on_na_ctr_dec", hasUpdate && updateAltDiffers && updateProvided && updateProviderWeak && !updateAltCorrect)
-    
+
     XSPerfAccumulate(f"tage_bank_${i}_na", hasUpdate && updateProvided && updateProviderWeak)
     XSPerfAccumulate(f"tage_bank_${i}_use_na_correct", hasUpdate && updateProvided && updateProviderWeak && !updateUseAlt && !updateMispred)
     XSPerfAccumulate(f"tage_bank_${i}_use_na_wrong",   hasUpdate && updateProvided && updateProviderWeak && !updateUseAlt &&  updateMispred)
@@ -833,7 +852,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   bt.io.update_takens := RegNext(bUpdateTakens)
 
   // all should be ready for req
-  io.s1_ready := tables.map(_.io.req.ready).reduce(_&&_)
+  io.s1_ready := tables.map(_.io.req.ready).reduce(_ && _) && bt.io.req.ready
   XSPerfAccumulate(f"tage_write_blocks_read", !io.s1_ready)
 
   def pred_perf(name: String, cnt: UInt)   = XSPerfAccumulate(s"${name}_at_pred", cnt)

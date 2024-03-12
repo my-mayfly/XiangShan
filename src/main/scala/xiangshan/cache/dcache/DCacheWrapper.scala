@@ -16,27 +16,25 @@
 
 package xiangshan.cache
 
-import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.experimental.ExtModule
 import chisel3.util._
-import xiangshan._
-import utils._
-import utility._
+import coupledL2.VaddrField
+import coupledL2.IsKeywordField
+import coupledL2.IsKeywordKey
 import freechips.rocketchip.diplomacy.{IdRange, LazyModule, LazyModuleImp, TransferSizes}
-import xiangshan.backend.rob.RobDebugRollingIO
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.util.{BundleFieldBase, UIntToOH1}
-import device.RAMHelper
-import coupledL2.{AliasField, VaddrField, PrefetchField}
-import utility.ReqSourceField
-import utility.FastArbiter
-import mem.AddPipelineReg
+import freechips.rocketchip.util.BundleFieldBase
+import huancun.{AliasField, PrefetchField}
+import org.chipsalliance.cde.config.Parameters
+import utility._
+import utils._
+import xiangshan._
+import xiangshan.backend.rob.RobDebugRollingIO
 import xiangshan.cache.wpu._
-import xiangshan.mem.HasL1PrefetchSourceParameter
+import xiangshan.mem.{AddPipelineReg, HasL1PrefetchSourceParameter}
 import xiangshan.mem.prefetch._
-
-import scala.math.max
+import xiangshan.mem.LqPtr
 
 // DCache specific parameters
 case class DCacheParameters
@@ -55,7 +53,8 @@ case class DCacheParameters
   nMMIOs: Int = 1,
   blockBytes: Int = 64,
   nMaxPrefetchEntry: Int = 1,
-  alwaysReleaseData: Boolean = false
+  alwaysReleaseData: Boolean = false,
+  isKeywordBitsOpt: Option[Boolean] = Some(true)
 ) extends L1CacheParameters {
   // if sets * blockBytes > 4KB(page size),
   // cache alias will happen,
@@ -229,6 +228,15 @@ trait HasDCacheParameters extends HasL1CacheParameters with HasL1PrefetchSourceP
     require(data.getWidth >= (bank+1)*DCacheSRAMRowBytes)
     data(DCacheSRAMRowBytes * (bank + 1) - 1, DCacheSRAMRowBytes * bank)
   }
+  
+  def get_alias(vaddr: UInt): UInt ={
+    require(blockOffBits + idxBits > pgIdxBits)
+    if(blockOffBits + idxBits > pgIdxBits){
+      vaddr(blockOffBits + idxBits - 1, pgIdxBits)
+    }else{
+      0.U
+    }
+  }
 
   def is_alias_match(vaddr0: UInt, vaddr1: UInt): Bool = {
     require(vaddr0.getWidth == VAddrBits && vaddr1.getWidth == VAddrBits)
@@ -353,7 +361,8 @@ class DCacheWordReq(implicit p: Parameters) extends DCacheBundle
   val instrtype   = UInt(sourceTypeWidth.W)
   val isFirstIssue = Bool()
   val replayCarry = new ReplayCarry(nWays)
-
+  val lqIdx = new LqPtr
+  
   val debug_robIdx = UInt(log2Ceil(RobSize).W)
   def dump() = {
     XSDebug("DCacheWordReq: cmd: %x vaddr: %x data: %x mask: %x id: %d\n",
@@ -398,7 +407,7 @@ class DCacheWordReqWithVaddrAndPfFlag(implicit p: Parameters) extends DCacheWord
     res.replayCarry := replayCarry
     res.isFirstIssue := isFirstIssue
     res.debug_robIdx := debug_robIdx
-    
+
     res
   }
 }
@@ -568,6 +577,8 @@ class DCacheLoadIO(implicit p: Parameters) extends DCacheWordIO
   val replacementUpdated = Output(Bool())
   // cycle 0: prefetch source bits
   val pf_source = Output(UInt(L1PfSourceBits.W))
+  // cycle0: load microop
+ // val s0_uop = Output(new MicroOp)
   // cycle 0: virtual address: req.addr
   // cycle 1: physical address: s1_paddr
   val s1_paddr_dup_lsu = Output(UInt(PAddrBits.W)) // lsu side paddr
@@ -630,7 +641,6 @@ class DcacheToLduForwardIO(implicit p: Parameters) extends DCacheBundle {
     val all_match = req_valid && valid &&
                 req_mshr_id === mshrid &&
                 req_paddr(log2Up(refillBytes)) === last
-
     val forward_D = RegInit(false.B)
     val forwardData = RegInit(VecInit(List.fill(VLEN/8)(0.U(8.W))))
 
@@ -752,6 +762,7 @@ class DCacheIO(implicit p: Parameters) extends DCacheBundle {
   val lqEmpty = Input(Bool())
   val pf_ctrl = Output(new PrefetchControlBundle)
   val force_write = Input(Bool())
+  val sms_agt_evict_req = DecoupledIO(new AGTEvictReq)
   val debugTopDown = new DCacheTopDownIO
   val debugRolling = Flipped(new RobDebugRollingIO)
 }
@@ -763,8 +774,11 @@ class DCache()(implicit p: Parameters) extends LazyModule with HasDCacheParamete
     PrefetchField(),
     ReqSourceField(),
     VaddrField(VAddrBits - blockOffBits),
+  //  IsKeywordField()
   ) ++ cacheParams.aliasBitsOpt.map(AliasField)
-  val echoFields: Seq[BundleFieldBase] = Nil
+  val echoFields: Seq[BundleFieldBase] = Seq(
+    IsKeywordField()
+  )
 
   val clientParameters = TLMasterPortParameters.v1(
     Seq(TLMasterParameters.v1(
@@ -843,6 +857,7 @@ class DCacheImp(outer: DCache) extends LazyModuleImp(outer) with HasDCacheParame
   missQueue.io.hartId := io.hartId
   missQueue.io.l2_pf_store_only := RegNext(io.l2_pf_store_only, false.B)
   missQueue.io.debugTopDown <> io.debugTopDown
+  missQueue.io.sms_agt_evict_req <> io.sms_agt_evict_req
   io.memSetPattenDetected := missQueue.io.memSetPattenDetected
 
   val errors = ldu.map(_.io.error) ++ // load error
@@ -1013,11 +1028,12 @@ class DCacheImp(outer: DCache) extends LazyModuleImp(outer) with HasDCacheParame
 
     ldu(i).io.bank_conflict_slow := bankedDataArray.io.bank_conflict_slow(i)
   })
-
+ val isKeyword = bus.d.bits.echo.lift(IsKeywordKey).getOrElse(false.B)
   (0 until LoadPipelineWidth).map(i => {
     val (_, _, done, _) = edge.count(bus.d)
     when(bus.d.bits.opcode === TLMessages.GrantData) {
-      io.lsu.forward_D(i).apply(bus.d.valid, bus.d.bits.data, bus.d.bits.source, done)
+      io.lsu.forward_D(i).apply(bus.d.valid, bus.d.bits.data, bus.d.bits.source, isKeyword ^ done)
+   //   io.lsu.forward_D(i).apply(bus.d.valid, bus.d.bits.data, bus.d.bits.source,done)
     }.otherwise {
       io.lsu.forward_D(i).dontCare()
     }

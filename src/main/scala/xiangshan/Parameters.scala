@@ -16,7 +16,7 @@
 
 package xiangshan
 
-import chipsalliance.rocketchip.config.{Field, Parameters}
+import org.chipsalliance.cde.config.{Field, Parameters}
 import chisel3._
 import chisel3.util._
 import xiangshan.backend.exu._
@@ -72,9 +72,9 @@ case class XSCoreParameters
   EnableCommitGHistDiff: Boolean = true,
   UbtbSize: Int = 256,
   FtbSize: Int = 2048,
-  RasSize: Int = 32,
-  RasSpecSize: Int = 64,
-  RasCtrSize: Int = 8,
+  RasSize: Int = 16,
+  RasSpecSize: Int = 32,
+  RasCtrSize: Int = 3,
   CacheLineSize: Int = 512,
   FtbWays: Int = 4,
   TageTableInfos: Seq[Tuple3[Int,Int,Int]] =
@@ -127,7 +127,9 @@ case class XSCoreParameters
 
       (preds, ras.io.out)
     }),
+  ICacheECCForceError: Boolean = false,
   IBufSize: Int = 48,
+  IBufNBank: Int = 6, // IBuffer bank amount, should divide IBufSize
   DecodeWidth: Int = 6,
   RenameWidth: Int = 6,
   CommitWidth: Int = 6,
@@ -178,7 +180,7 @@ case class XSCoreParameters
   StoreBufferThreshold: Int = 7,
   EnsbufferWidth: Int = 2,
   UncacheBufferSize: Int = 4,
-  EnableLoadToLoadForward: Boolean = true,
+  EnableLoadToLoadForward: Boolean = false,
   EnableFastForward: Boolean = true,
   EnableLdVioCheckAfterReset: Boolean = true,
   EnableSoftPrefetchAfterReset: Boolean = true,
@@ -250,7 +252,6 @@ case class XSCoreParameters
     nProbeEntries = 2,
     nPrefetchEntries = 12,
     nPrefBufferEntries = 32,
-    hasPrefetch = true,
   ),
   dcacheParametersOpt: Option[DCacheParameters] = Some(DCacheParameters(
     tagECC = Some("secded"),
@@ -399,7 +400,9 @@ trait HasXSParameter {
   val CacheLineSize = coreParams.CacheLineSize
   val CacheLineHalfWord = CacheLineSize / 16
   val ExtHistoryLength = HistoryLength + 64
+  val ICacheECCForceError = coreParams.ICacheECCForceError
   val IBufSize = coreParams.IBufSize
+  val IBufNBank = coreParams.IBufNBank
   val DecodeWidth = coreParams.DecodeWidth
   val RenameWidth = coreParams.RenameWidth
   val CommitWidth = coreParams.CommitWidth
@@ -430,6 +433,9 @@ trait HasXSParameter {
   val NRIntWritePorts = exuParameters.AluCnt + exuParameters.MduCnt + exuParameters.LduCnt
   val NRFpReadPorts = 3 * exuParameters.FmacCnt + exuParameters.StuCnt
   val NRFpWritePorts = exuParameters.FpExuCnt + exuParameters.LduCnt
+  val NumRedirect = exuParameters.JmpCnt + exuParameters.AluCnt
+  val BackendRedirectNum = NumRedirect + 2 //2: ldReplay + Exception
+  val FtqRedirectAheadNum = exuParameters.AluCnt
   val LoadPipelineWidth = coreParams.LoadPipelineWidth
   val StorePipelineWidth = coreParams.StorePipelineWidth
   val VecMemSrcInWidth = coreParams.VecMemSrcInWidth
@@ -451,6 +457,10 @@ trait HasXSParameter {
   val EnableAtCommitMissTrigger = coreParams.EnableAtCommitMissTrigger
   val EnableStorePrefetchSMS = coreParams.EnableStorePrefetchSMS
   val EnableStorePrefetchSPB = coreParams.EnableStorePrefetchSPB
+  require(LoadPipelineWidth == StorePipelineWidth, "LoadPipelineWidth must be equal StorePipelineWidth!")
+  require(LoadPipelineWidth == exuParameters.LduCnt, "LoadPipelineWidth must be equal exuParameters.LduCnt!")
+  require(StorePipelineWidth == exuParameters.StuCnt, "StorePipelineWidth must be equal exuParameters.StuCnt!")
+  val Enable3Load3Store = (LoadPipelineWidth == 3 && StorePipelineWidth == 3)
   val asidLen = coreParams.MMUAsidLen
   val BTLBWidth = coreParams.LoadPipelineWidth + coreParams.StorePipelineWidth
   val refillBothTlb = coreParams.refillBothTlb
@@ -515,4 +525,5 @@ trait HasXSParameter {
   val numCSRPCntCtrl     = 8
   val numCSRPCntLsu      = 8
   val numCSRPCntHc       = 5
+  val printEventCoding   = true
 }

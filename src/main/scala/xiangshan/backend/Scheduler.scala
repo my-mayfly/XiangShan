@@ -16,7 +16,7 @@
 
 package xiangshan.backend
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import difftest._
@@ -352,6 +352,8 @@ class SchedulerImp(outer: Scheduler) extends LazyModuleImp(outer) with HasXSPara
     } else None
     if (io.extra.fpStateReadIn.isDefined && numInFpStateRead > 0) {
       io.extra.fpStateReadIn.get <> readFpState.takeRight(numInFpStateRead)
+    } else if (io.extra.fpStateReadIn.isDefined) {
+      io.extra.fpStateReadIn.get <> DontCare
     }
     busyTable
   } else None

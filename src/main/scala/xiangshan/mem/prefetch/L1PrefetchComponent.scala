@@ -1,6 +1,6 @@
 package xiangshan.mem.prefetch
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import xiangshan._
@@ -169,7 +169,7 @@ class TrainFilter(size: Int, name: String)(implicit p: Parameters) extends XSMod
   val enqLen = exuParameters.LduCnt
   val enqPtrExt = RegInit(VecInit((0 until enqLen).map(_.U.asTypeOf(new Ptr))))
   val deqPtrExt = RegInit(0.U.asTypeOf(new Ptr))
-  
+
   val deqPtr = WireInit(deqPtrExt.value)
 
   require(size >= enqLen)
@@ -320,7 +320,7 @@ class MLPReqFilterBundle(implicit p: Parameters) extends XSBundle with HasL1Pref
 
     res
   }
-  
+
   def invalidate() = {
     // disable sending pf req
     when(sink === SINK_L1) {
@@ -471,7 +471,7 @@ class MutiLevelPrefetchFilter(implicit p: Parameters) extends XSModule with HasL
   val s1_pf_fire_vec = RegNext(s0_pf_fire_vec)
 
   val s0_pf_fire = l1_pf_req_arb.io.out.fire
-  val s0_pf_index = OHToUInt(s0_pf_fire_vec.asUInt)
+  val s0_pf_index = l1_pf_req_arb.io.chosen
   val s0_pf_candidate_oh = get_candidate_oh(l1_pf_req_arb.io.out.bits.paddr)
 
   for(i <- 0 until MLP_SIZE) {
@@ -489,7 +489,7 @@ class MutiLevelPrefetchFilter(implicit p: Parameters) extends XSModule with HasL
   }
 
   assert(PopCount(s0_pf_fire_vec) <= 1.U, "s0_pf_fire_vec should be one-hot or empty")
-  
+
   // s1: send out to dcache
   val s1_pf_valid = Reg(Bool())
   val s1_pf_bits = RegEnable(l1_pf_req_arb.io.out.bits, l1_pf_req_arb.io.out.fire)
@@ -512,7 +512,6 @@ class MutiLevelPrefetchFilter(implicit p: Parameters) extends XSModule with HasL
     array(s1_pf_index).bit_vec := array(s1_pf_index).bit_vec & ~s1_pf_candidate_oh
   }
 
-  // FIXME: the logic is to long, add an extra pf pipe stage
   io.l1_req.valid := s1_pf_valid && !s1_pf_evict && !s1_pf_update && (s1_pf_bits.paddr >= 0x80000000L.U) && io.enable
   io.l1_req.bits := s1_pf_bits
 
@@ -537,7 +536,7 @@ class MutiLevelPrefetchFilter(implicit p: Parameters) extends XSModule with HasL
     val evict = s1_alloc && (s1_index === i.U)
     l2_pf_req_arb.io.in(i).valid := array(i).can_send_pf() && (array(i).sink === SINK_L2) && !evict
     l2_pf_req_arb.io.in(i).bits.addr := array(i).get_pf_addr()
-    l2_pf_req_arb.io.in(i).bits.source := MuxLookup(array(i).source.value, MemReqSource.Prefetch2L2Unknown.id.U, Seq(
+    l2_pf_req_arb.io.in(i).bits.source := MuxLookup(array(i).source.value, MemReqSource.Prefetch2L2Unknown.id.U)(Seq(
       L1_HW_PREFETCH_STRIDE -> MemReqSource.Prefetch2L2Stride.id.U,
       L1_HW_PREFETCH_STREAM -> MemReqSource.Prefetch2L2Stream.id.U
     ))
@@ -622,12 +621,12 @@ class L1Prefetcher(implicit p: Parameters) extends BasePrefecher with HasStreamP
   stride_meta_array.io.train_req <> stride_train_filter.io.train_req
   stride_meta_array.io.stream_lookup_req <> stream_bit_vec_array.io.stream_lookup_req
   stride_meta_array.io.stream_lookup_resp <> stream_bit_vec_array.io.stream_lookup_resp
-  
+
   // stream has higher priority than stride
   pf_queue_filter.io.prefetch_req.valid := stream_bit_vec_array.io.prefetch_req.valid || stride_meta_array.io.prefetch_req.valid
   pf_queue_filter.io.prefetch_req.bits := Mux(
-    stream_bit_vec_array.io.prefetch_req.valid, 
-    stream_bit_vec_array.io.prefetch_req.bits, 
+    stream_bit_vec_array.io.prefetch_req.valid,
+    stream_bit_vec_array.io.prefetch_req.bits,
     stride_meta_array.io.prefetch_req.bits
   )
 

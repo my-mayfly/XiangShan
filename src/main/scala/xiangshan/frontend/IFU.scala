@@ -16,7 +16,7 @@
 
 package xiangshan.frontend
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.rocket.RVCDecoder
@@ -136,7 +136,6 @@ class NewIFU(implicit p: Parameters) extends XSModule
   def numOfStage = 3
   require(numOfStage > 1, "BPU numOfStage must be greater than 1")
   val topdown_stages = RegInit(VecInit(Seq.fill(numOfStage)(0.U.asTypeOf(new FrontendTopDownBundle))))
-  dontTouch(topdown_stages)
   // bubble events in IFU, only happen in stage 1
   val icacheMissBubble = Wire(Bool())
   val itlbMissBubble =Wire(Bool())
@@ -200,14 +199,14 @@ class NewIFU(implicit p: Parameters) extends XSModule
       io.toIbuffer.bits.topdown_info.reasons(TopDownCounters.OtherRedirectBubble.id) := true.B
     }
   }
-  
+
   class TlbExept(implicit p: Parameters) extends XSBundle{
     val pageFault = Bool()
     val accessFault = Bool()
     val mmio = Bool()
   }
 
-  val preDecoders       = Seq.fill(4){ Module(new PreDecode) }
+  val preDecoder       = Module(new PreDecode)
 
   val predChecker     = Module(new PredChecker)
   val frontendTrigger = Module(new FrontendTrigger)
@@ -293,10 +292,28 @@ class NewIFU(implicit p: Parameters) extends XSModule
   .elsewhen(f0_fire && !f0_flush) {f1_valid  := true.B}
   .elsewhen(f1_fire)              {f1_valid  := false.B}
 
-  val f1_pc                 = VecInit((0 until PredictWidth).map(i => f1_ftq_req.startAddr + (i * 2).U))
-  val f1_half_snpc          = VecInit((0 until PredictWidth).map(i => f1_ftq_req.startAddr + ((i+2) * 2).U))
-  val f1_cut_ptr            = if(HasCExtension)  VecInit((0 until PredictWidth + 1).map(i =>  Cat(0.U(1.W), f1_ftq_req.startAddr(blockOffBits-1, 1)) + i.U ))
-                                  else           VecInit((0 until PredictWidth).map(i =>     Cat(0.U(1.W), f1_ftq_req.startAddr(blockOffBits-1, 2)) + i.U ))
+  val f1_pc_adder_cut_point = (VAddrBits/2) - 1 // equal lower_result overflow bit
+  val f1_pc_high            = f1_ftq_req.startAddr(VAddrBits-1,f1_pc_adder_cut_point)
+  val f1_pc_high_plus1      = f1_pc_high + 1.U
+
+  val f1_pc_lower_result    = VecInit((0 until PredictWidth).map(i => Cat(0.U(1.W), f1_ftq_req.startAddr(f1_pc_adder_cut_point-1, 0)) + (i * 2).U)) // cat with overflow bit
+  val f1_pc                 = VecInit(f1_pc_lower_result.map{ i =>  
+    Mux(i(f1_pc_adder_cut_point), Cat(f1_pc_high_plus1,i(f1_pc_adder_cut_point-1,0)), Cat(f1_pc_high,i(f1_pc_adder_cut_point-1,0)))})
+
+  val f1_half_snpc_lower_result = VecInit((0 until PredictWidth).map(i => Cat(0.U(1.W), f1_ftq_req.startAddr(f1_pc_adder_cut_point-1, 0)) + ((i+2) * 2).U)) // cat with overflow bit
+  val f1_half_snpc          = VecInit(f1_half_snpc_lower_result.map{i => 
+    Mux(i(f1_pc_adder_cut_point), Cat(f1_pc_high_plus1,i(f1_pc_adder_cut_point-1,0)), Cat(f1_pc_high,i(f1_pc_adder_cut_point-1,0)))})
+  
+  if (env.FPGAPlatform){
+    val f1_pc_diff          = VecInit((0 until PredictWidth).map(i => f1_ftq_req.startAddr + (i * 2).U))
+    val f1_half_snpc_diff   = VecInit((0 until PredictWidth).map(i => f1_ftq_req.startAddr + ((i+2) * 2).U))
+
+    XSError(f1_pc.zip(f1_pc_diff).map{ case (a,b) => a.asUInt =/= b.asUInt }.reduce(_||_), "f1_half_snpc adder cut fail")
+    XSError(f1_half_snpc.zip(f1_half_snpc_diff).map{ case (a,b) => a.asUInt =/= b.asUInt }.reduce(_||_),  "f1_half_snpc adder cut fail")
+  }
+
+  val f1_cut_ptr            = if(HasCExtension)  VecInit((0 until PredictWidth + 1).map(i =>  Cat(0.U(2.W), f1_ftq_req.startAddr(blockOffBits-2, 1)) + i.U ))
+                                  else           VecInit((0 until PredictWidth).map(i =>     Cat(0.U(2.W), f1_ftq_req.startAddr(blockOffBits-2, 2)) + i.U ))
 
   /**
     ******************************************************************************
@@ -338,12 +355,6 @@ class NewIFU(implicit p: Parameters) extends XSModule
   .elsewhen(f1_fire && !f1_flush) {f2_valid := true.B }
   .elsewhen(f2_fire)              {f2_valid := false.B}
 
-  // val f2_cache_response_data = ResultHoldBypass(valid = f2_icache_all_resp_wire, data = VecInit(fromICache.map(_.bits.readData)))
-  val f2_cache_response_reg_data  = VecInit(fromICache.map(_.bits.registerData))
-  val f2_cache_response_sram_data = VecInit(fromICache.map(_.bits.sramData))
-  val f2_cache_response_select    = VecInit(fromICache.map(_.bits.select))
-
-
   val f2_except_pf    = VecInit((0 until PortNumber).map(i => fromICache(i).bits.tlbExcp.pageFault))
   val f2_except_af    = VecInit((0 until PortNumber).map(i => fromICache(i).bits.tlbExcp.accessFault))
   val f2_mmio         = fromICache(0).bits.tlbExcp.mmio && !fromICache(0).bits.tlbExcp.accessFault &&
@@ -376,9 +387,8 @@ class NewIFU(implicit p: Parameters) extends XSModule
   def cut(cacheline: UInt, cutPtr: Vec[UInt]) : Vec[UInt] ={
     require(HasCExtension)
     // if(HasCExtension){
-      val partCacheline = cacheline((blockBytes * 8 * 2 * 3) / 4 - 1, 0)
       val result   = Wire(Vec(PredictWidth + 1, UInt(16.W)))
-      val dataVec  = cacheline.asTypeOf(Vec(blockBytes * 3 /4, UInt(16.W))) //47 16-bit data vector
+      val dataVec  = cacheline.asTypeOf(Vec(blockBytes/2, UInt(16.W))) //32 16-bit data vector
       (0 until PredictWidth + 1).foreach( i =>
         result(i) := dataVec(cutPtr(i)) //the max ptr is 3*blockBytes/4-1
       )
@@ -393,16 +403,10 @@ class NewIFU(implicit p: Parameters) extends XSModule
     // }
   }
 
-  val f2_data_2_cacheline =  Wire(Vec(4, UInt((2 * blockBits).W)))
-  f2_data_2_cacheline(0) := Cat(f2_cache_response_reg_data(1) , f2_cache_response_reg_data(0))
-  f2_data_2_cacheline(1) := Cat(f2_cache_response_reg_data(1) , f2_cache_response_sram_data(0))
-  f2_data_2_cacheline(2) := Cat(f2_cache_response_sram_data(1) , f2_cache_response_reg_data(0))
-  f2_data_2_cacheline(3) := Cat(f2_cache_response_sram_data(1) , f2_cache_response_sram_data(0))
+  val f2_cache_response_data = fromICache.map(_.bits.data)
+  val f2_data_2_cacheline = Cat(f2_cache_response_data(1), f2_cache_response_data(0))
 
-  val f2_cut_data   = VecInit(f2_data_2_cacheline.map(data => cut(  data, f2_cut_ptr )))
-
-  val f2_predecod_ptr = Wire(UInt(2.W))
-  f2_predecod_ptr := Cat(f2_cache_response_select(1),f2_cache_response_select(0))
+  val f2_cut_data   = cut(f2_data_2_cacheline, f2_cut_ptr)
 
   /** predecode (include RVC expander) */
   // preDecoderRegIn.data := f2_reg_cut_data
@@ -410,14 +414,13 @@ class NewIFU(implicit p: Parameters) extends XSModule
   // preDecoderRegInIn.csrTriggerEnable := io.csrTriggerEnable
   // preDecoderRegIn.pc  := f2_pc
 
-  val preDecoderOut = Mux1H(UIntToOH(f2_predecod_ptr), preDecoders.map(_.io.out))
-  for(i <- 0 until 4){
-    val preDecoderIn  = preDecoders(i).io.in
-    preDecoderIn.data := f2_cut_data(i)
-    preDecoderIn.frontendTrigger := io.frontendTrigger  
-    preDecoderIn.csrTriggerEnable := io.csrTriggerEnable
-    preDecoderIn.pc  := f2_pc
-  }
+  val preDecoderIn  = preDecoder.io.in
+  preDecoderIn.data := f2_cut_data
+  preDecoderIn.frontendTrigger := io.frontendTrigger
+  preDecoderIn.csrTriggerEnable := io.csrTriggerEnable
+  preDecoderIn.pc  := f2_pc
+  val preDecoderOut = preDecoder.io.out
+
 
   //val f2_expd_instr     = preDecoderOut.expInstr
   val f2_instr          = preDecoderOut.instr
@@ -451,7 +454,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
 
   f3_ready := f3_fire || !f3_valid
 
-  val f3_cut_data       = RegEnable(f2_cut_data(f2_predecod_ptr), f2_fire)
+  val f3_cut_data       = RegEnable(f2_cut_data, f2_fire)
 
   val f3_except_pf      = RegEnable(f2_except_pf,  f2_fire)
   val f3_except_af      = RegEnable(f2_except_af,  f2_fire)
@@ -459,7 +462,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
 
   //val f3_expd_instr     = RegEnable(f2_expd_instr,  f2_fire)
   val f3_instr          = RegEnable(f2_instr, f2_fire)
-  val f3_expd_instr     = VecInit((0 until PredictWidth).map{ i => 
+  val f3_expd_instr     = VecInit((0 until PredictWidth).map{ i =>
     val expander       = Module(new RVCExpander)
     expander.io.in := f3_instr(i)
     expander.io.out.bits
@@ -629,7 +632,8 @@ class NewIFU(implicit p: Parameters) extends XSModule
     }
   }
 
-  //exception or flush by older branch prediction
+  // Exception or flush by older branch prediction
+  // Condition is from RegNext(fromFtq.redirect), 1 cycle after backend rediect
   when(f3_ftq_flush_self || f3_ftq_flush_by_older)  {
     mmio_state := m_idle
     mmio_is_RVC := false.B
@@ -745,7 +749,11 @@ class NewIFU(implicit p: Parameters) extends XSModule
   f3_mmio_missOffset.valid := f3_req_is_mmio
   f3_mmio_missOffset.bits  := 0.U
 
-  mmioFlushWb.valid           := (f3_req_is_mmio && mmio_state === m_waitCommit && RegNext(fromUncache.fire)  && f3_mmio_use_seq_pc)
+  // Send mmioFlushWb back to FTQ 1 cycle after uncache fetch return
+  // When backend redirect, mmio_state reset after 1 cycle.
+  // In this case, mask .valid to avoid overriding backend redirect
+  mmioFlushWb.valid           := (f3_req_is_mmio && mmio_state === m_waitCommit && RegNext(fromUncache.fire) &&
+    f3_mmio_use_seq_pc && !f3_ftq_flush_self && !f3_ftq_flush_by_older)
   mmioFlushWb.bits.pc         := f3_pc
   mmioFlushWb.bits.pd         := f3_pd
   mmioFlushWb.bits.pd.zipWithIndex.map{case(instr,i) => instr.valid :=  f3_mmio_range(i)}
@@ -766,7 +774,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
     val jalOffset = jal_offset(inst, currentIsRVC)
     val brOffset  = br_offset(inst, currentIsRVC)
 
-    io.toIbuffer.bits.instrs (0) := new RVCDecoder(inst, XLEN).decode.bits
+    io.toIbuffer.bits.instrs(0) := new RVCDecoder(inst, XLEN, useAddiForMv = true).decode.bits
 
 
     io.toIbuffer.bits.pd(0).valid   := true.B
@@ -827,18 +835,18 @@ class NewIFU(implicit p: Parameters) extends XSModule
 
   f3_wb_not_flush := wb_ftq_req.ftqIdx === f3_ftq_req.ftqIdx && f3_valid && wb_valid
 
-  /** if a req with a last half but miss predicted enters in wb stage, and this cycle f3 stalls,  
+  /** if a req with a last half but miss predicted enters in wb stage, and this cycle f3 stalls,
     * we set a flag to notify f3 that the last half flag need not to be set.
     */
   //f3_fire is after wb_valid
-  when(wb_valid && RegNext(f3_hasLastHalf,init = false.B) 
+  when(wb_valid && RegNext(f3_hasLastHalf,init = false.B)
         && wb_check_result_stage2.fixedMissPred(PredictWidth - 1) && !f3_fire  && !RegNext(f3_fire,init = false.B) && !f3_flush
       ){
     f3_lastHalf_disable := true.B
   }
 
   //wb_valid and f3_fire are in same cycle
-  when(wb_valid && RegNext(f3_hasLastHalf,init = false.B) 
+  when(wb_valid && RegNext(f3_hasLastHalf,init = false.B)
         && wb_check_result_stage2.fixedMissPred(PredictWidth - 1) && f3_fire
       ){
     f3_lastHalf.valid := false.B

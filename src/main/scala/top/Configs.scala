@@ -22,7 +22,7 @@ import xiangshan._
 import utils._
 import utility._
 import system._
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
 import freechips.rocketchip.tile.{BusErrorUnit, BusErrorUnitParams, XLen}
 import xiangshan.frontend.icache.ICacheParameters
 import freechips.rocketchip.devices.debug._
@@ -56,7 +56,7 @@ class BaseConfig(n: Int) extends Config((site, here, up) => {
 class MinimalConfig(n: Int = 1) extends Config(
   new BaseConfig(n).alter((site, here, up) => {
     case XSTileKey => up(XSTileKey).map(
-      _.copy(
+      p => p.copy(
         DecodeWidth = 2,
         RenameWidth = 2,
         CommitWidth = 2,
@@ -66,7 +66,7 @@ class MinimalConfig(n: Int = 1) extends Config(
         VirtualLoadQueueSize = 16,
         LoadQueueRARSize = 16,
         LoadQueueRAWSize = 12,
-        LoadQueueReplaySize = 8,
+        LoadQueueReplaySize = 12,
         LoadUncacheBufferSize = 8,
         LoadQueueNWriteBanks = 4, // NOTE: make sure that LoadQueue{RAR, RAW, Replay}Size is divided by LoadQueueNWriteBanks.
         RollbackGroupSize = 8,
@@ -76,8 +76,11 @@ class MinimalConfig(n: Int = 1) extends Config(
         RobSize = 32,
         FtqSize = 8,
         IBufSize = 16,
+        IBufNBank = 2,
         StoreBufferSize = 4,
         StoreBufferThreshold = 3,
+        LoadPipelineWidth = 2,
+        StorePipelineWidth = 2,
         dpParams = DispatchParameters(
           IntDqSize = 12,
           FpDqSize = 12,
@@ -105,9 +108,9 @@ class MinimalConfig(n: Int = 1) extends Config(
           nMissEntries = 2,
           nReleaseEntries = 1,
           nProbeEntries = 2,
-          nPrefetchEntries = 2,
-          nPrefBufferEntries = 32,
-          hasPrefetch = true
+          // fdip
+          enableICachePrefetch = true,
+          prefetchToL1 = false,
         ),
         dcacheParametersOpt = Some(DCacheParameters(
           nSets = 64, // 32KB DCache
@@ -166,8 +169,13 @@ class MinimalConfig(n: Int = 1) extends Config(
           ways = 8,
           sets = 128,
           echoField = Seq(huancun.DirtyField()),
-          prefetch = None
-        )),
+          prefetch = None,
+          clientCaches = Seq(L1Param(
+            "dcache",
+            isKeywordBitsOpt = p.dcacheParametersOpt.get.isKeywordBitsOpt
+          )),
+          )
+        ),
         L2NBanks = 2,
         prefetcher = None // if L2 pf_recv_node does not exist, disable SMS prefetcher
       )
@@ -232,6 +240,7 @@ class WithNKBL2
   banks: Int = 1
 ) extends Config((site, here, up) => {
   case XSTileKey =>
+    require(inclusive, "L2 must be inclusive")
     val upParams = up(XSTileKey)
     val l2sets = n * 1024 / banks / ways / 64
     upParams.map(p => p.copy(
@@ -244,11 +253,14 @@ class WithNKBL2
           sets = 2 * p.dcacheParametersOpt.get.nSets / banks,
           ways = p.dcacheParametersOpt.get.nWays + 2,
           aliasBitsOpt = p.dcacheParametersOpt.get.aliasBitsOpt,
-          vaddrBitsOpt = Some(p.VAddrBits - log2Up(p.dcacheParametersOpt.get.blockBytes))
+          vaddrBitsOpt = Some(p.VAddrBits - log2Up(p.dcacheParametersOpt.get.blockBytes)),
+          isKeywordBitsOpt = p.dcacheParametersOpt.get.isKeywordBitsOpt
         )),
         reqField = Seq(utility.ReqSourceField()),
         echoField = Seq(huancun.DirtyField()),
-        prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams())
+        prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        enablePerf = !site(DebugOptionsKey).FPGAPlatform,
+        elaboratedTopDown = !site(DebugOptionsKey).FPGAPlatform
       )),
       L2NBanks = banks
     ))
@@ -284,7 +296,8 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
         tagECC = Some("secded"),
         dataECC = Some("secded"),
         simulation = !site(DebugOptionsKey).FPGAPlatform,
-        prefetch = Some(huancun.prefetch.L3PrefetchReceiverParams())
+        prefetch = Some(huancun.prefetch.L3PrefetchReceiverParams()),
+        tpmeta = Some(huancun.prefetch.DefaultTPmetaParameters())
       ))
     )
 })
@@ -321,14 +334,14 @@ class WithFuzzer extends Config((site, here, up) => {
 
 class MinimalAliasDebugConfig(n: Int = 1) extends Config(
   new WithNKBL3(512, inclusive = false) ++
-    new WithNKBL2(256, inclusive = false) ++
+    new WithNKBL2(256, inclusive = true) ++
     new WithNKBL1D(128) ++
     new MinimalConfig(n)
 )
 
 class MediumConfig(n: Int = 1) extends Config(
   new WithNKBL3(4096, inclusive = false, banks = 4)
-    ++ new WithNKBL2(512, inclusive = false)
+    ++ new WithNKBL2(512, inclusive = true)
     ++ new WithNKBL1D(128)
     ++ new BaseConfig(n)
 )
@@ -339,8 +352,8 @@ class FuzzConfig(dummy: Int = 0) extends Config(
 )
 
 class DefaultConfig(n: Int = 1) extends Config(
-  new WithNKBL3(6 * 1024, inclusive = false, banks = 4, ways = 6)
-    ++ new WithNKBL2(2 * 512, inclusive = false, banks = 4)
-    ++ new WithNKBL1D(128)
+  new WithNKBL3(16 * 1024, inclusive = false, banks = 4, ways = 16)
+    ++ new WithNKBL2(2 * 512, inclusive = true, banks = 4)
+    ++ new WithNKBL1D(64, ways = 4)
     ++ new BaseConfig(n)
 )

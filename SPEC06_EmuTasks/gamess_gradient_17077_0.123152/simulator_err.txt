@@ -1,0 +1,1 @@
+numactl: execution of `/nfs/home/mayuexiao/XiangShan/emu': No such file or directory

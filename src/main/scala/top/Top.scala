@@ -20,16 +20,15 @@ import chisel3._
 import chisel3.util._
 import xiangshan._
 import utils._
-import huancun.PrefetchRecv
+import huancun.{HCCacheParameters, HCCacheParamsKey, HuanCun, PrefetchRecv, TPmetaResp}
 import utility._
 import system._
 import device._
 import chisel3.stage.ChiselGeneratorAnnotation
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.jtag.JTAGIO
-import huancun.{HCCacheParamsKey, HuanCun, HCCacheParameters}
 
 abstract class BaseXSSoc()(implicit p: Parameters) extends LazyModule
   with BindingScope
@@ -87,9 +86,9 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
   }
 
   for (i <- 0 until NumCores) {
-    core_with_l2(i).clint_int_sink := misc.clint.intnode
-    core_with_l2(i).plic_int_sink :*= misc.plic.intnode
-    core_with_l2(i).debug_int_sink := misc.debugModule.debug.dmOuter.dmOuter.intnode
+    core_with_l2(i).clint_int_node := misc.clint.intnode
+    core_with_l2(i).plic_int_node :*= misc.plic.intnode
+    core_with_l2(i).debug_int_node := misc.debugModule.debug.dmOuter.dmOuter.intnode
     misc.plic.intnode := IntBuffer() := core_with_l2(i).beu_int_source
     misc.peripheral_ports(i) := core_with_l2(i).uncache
     misc.core_to_l3_ports(i) :=* core_with_l2(i).memory_port
@@ -120,6 +119,20 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
       l3.pf_recv_node.map(recv => {
         println("Connecting L1 prefetcher to L3!")
         recv := l3_pf_sender_opt.get
+      })
+      l3.tpmeta_recv_node.foreach(recv => {
+        for ((core, i) <- core_with_l2.zipWithIndex) {
+          println(s"Connecting core_$i\'s L2 TPmeta request to L3!")
+          recv := core.core_l3_tpmeta_source_port.get
+        }
+      })
+      l3.tpmeta_send_node.foreach(send => {
+        val broadcast = LazyModule(new ValidIOBroadcast[TPmetaResp]())
+        broadcast.node := send
+        for ((core, i) <- core_with_l2.zipWithIndex) {
+          println(s"Connecting core_$i\'s L2 TPmeta response to L3!")
+          core.core_l3_tpmeta_sink_port.get := broadcast.node
+        }
       })
     case None =>
   }
@@ -242,18 +255,16 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
 }
 
 object TopMain extends App {
-  override def main(args: Array[String]): Unit = {
-    val (config, firrtlOpts, firrtlComplier, firtoolOpts) = ArgParser.parse(args)
+  val (config, firrtlOpts, firtoolOpts) = ArgParser.parse(args)
 
-    // tools: init to close dpi-c when in fpga
-    val envInFPGA = config(DebugOptionsKey).FPGAPlatform
-    val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
-    val enableConstantin = config(DebugOptionsKey).EnableConstantin
-    Constantin.init(enableConstantin && !envInFPGA)
-    ChiselDB.init(enableChiselDB && !envInFPGA)
+  // tools: init to close dpi-c when in fpga
+  val envInFPGA = config(DebugOptionsKey).FPGAPlatform
+  val enableChiselDB = config(DebugOptionsKey).EnableChiselDB
+  val enableConstantin = config(DebugOptionsKey).EnableConstantin
+  Constantin.init(enableConstantin && !envInFPGA)
+  ChiselDB.init(enableChiselDB && !envInFPGA)
 
-    val soc = DisableMonitors(p => LazyModule(new XSTop()(p)))(config)
-    Generator.execute(firrtlOpts, soc.module, firrtlComplier, firtoolOpts)
-    FileRegisters.write(fileDir = "./build", filePrefix = "XSTop.")
-  }
+  val soc = DisableMonitors(p => LazyModule(new XSTop()(p)))(config)
+  Generator.execute(firrtlOpts, soc.module, firtoolOpts)
+  FileRegisters.write(fileDir = "./build", filePrefix = "XSTop.")
 }

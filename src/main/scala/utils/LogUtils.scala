@@ -16,7 +16,7 @@
 
 package utils
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import xiangshan.DebugOptionsKey
 import utils.XSLogLevel.XSLogLevel
@@ -35,7 +35,7 @@ object XSLogLevel extends Enumeration {
 }
 
 object XSLog {
-  val MagicStr = "9527"
+  val MagicStr = "__PERCENTAGE_M__"
   def apply(debugLevel: XSLogLevel, ctrlInfoOpt: Option[LogPerfIO] = None)
            (prefix: Boolean, cond: Bool, pable: Printable)(implicit p: Parameters): Any =
   {

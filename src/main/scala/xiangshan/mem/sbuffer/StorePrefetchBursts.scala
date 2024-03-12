@@ -16,7 +16,7 @@
 
 package xiangshan.mem
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import xiangshan._
@@ -86,7 +86,8 @@ class PrefetchBurstGenerator(is_store: Boolean)(implicit p: Parameters) extends 
     val prefetch_req = Vec(StorePipelineWidth, DecoupledIO(new StorePrefetchReq))
   })
 
-  require(StorePipelineWidth == 2)
+  val maxStorePipelineWidth = (if (Enable3Load3Store) 3 else 2)
+  require(StorePipelineWidth == maxStorePipelineWidth)
 
   val SIZE = BURST_ENGINE_SIZE
 
@@ -129,6 +130,10 @@ class PrefetchBurstGenerator(is_store: Boolean)(implicit p: Parameters) extends 
     out_decouple(1).valid := deq_valid && data_next(PAGEOFFSET) === pg_bit && out_decouple(0).fire
     out_decouple(1).bits := DontCare
     out_decouple(1).bits.vaddr := data_next
+    if (Enable3Load3Store) {
+      out_decouple(2).valid := false.B
+      out_decouple(2).bits := DontCare
+    }
     when(out_decouple(1).fire) {
       // fired 2 prefetch reqs
       data := data_next_next
@@ -162,7 +167,7 @@ class StorePrefetchBursts(implicit p: Parameters) extends DCacheModule with HasS
   })
   require(EnsbufferWidth == 2)
 
-  // meta for SPB 
+  // meta for SPB
   val N = SPB_N
   val last_st_block_addr = RegInit(0.U(VAddrBits.W))
   val saturate_counter = RegInit(0.S(SATURATE_COUNTER_BITS.W))
@@ -194,7 +199,7 @@ class StorePrefetchBursts(implicit p: Parameters) extends DCacheModule with HasS
   burst_engine.io.vaddr := get_block_addr(io.sbuffer_enq.bits.vaddr)
   burst_engine.io.prefetch_req <> io.prefetch_req
 
-  // perf 
+  // perf
   XSPerfAccumulate("trigger_burst", burst && io.enable)
   XSPerfAccumulate("trigger_check", check && io.enable)
 }

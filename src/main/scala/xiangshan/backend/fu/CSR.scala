@@ -16,7 +16,7 @@
 
 package xiangshan.backend.fu
 
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import chisel3._
 import chisel3.util._
 import difftest._
@@ -268,7 +268,7 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
     6.U -> I_Trigger, 7.U -> S_Trigger,
     8.U -> I_Trigger, 9.U -> L_Trigger
   )
-  def TypeLookup(select: UInt) = MuxLookup(select, I_Trigger, type_config)
+  def TypeLookup(select: UInt) = MuxLookup(select, I_Trigger)(type_config)
 
   val tdata1Phy = RegInit(VecInit(List.fill(10) {(2L << 60L).U(64.W)})) // init ttype 2
   val tdata2Phy = Reg(Vec(10, UInt(64.W)))
@@ -327,13 +327,13 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
     res
   }
 
-  csrio.customCtrl.frontend_trigger.t.bits.addr := MuxLookup(tselectPhy, 0.U, Seq(
+  csrio.customCtrl.frontend_trigger.t.bits.addr := MuxLookup(tselectPhy, 0.U)(Seq(
     0.U -> 0.U,
     1.U -> 1.U,
     6.U -> 2.U,
     8.U -> 3.U
   ))
-  csrio.customCtrl.mem_trigger.t.bits.addr := MuxLookup(tselectPhy, 0.U, Seq(
+  csrio.customCtrl.mem_trigger.t.bits.addr := MuxLookup(tselectPhy, 0.U)(Seq(
     2.U -> 0.U,
     3.U -> 1.U,
     4.U -> 2.U,
@@ -633,12 +633,20 @@ class CSR(implicit p: Parameters) extends FunctionUnit with HasCSRConst with PMP
                    List.fill(8)(RegInit("h8020080200".U(XLEN.W))) ++
                    List.fill(5)(RegInit("hc0300c0300".U(XLEN.W)))
   for (i <-0 until nrPerfCnts) {
-    perfEventscounten(i) := (Cat(perfEvents(i)(62),perfEvents(i)(61),(perfEvents(i)(61,60))) & priviledgeModeOH).orR
+    perfEventscounten(i) := (perfEvents(i)(63,60) & priviledgeModeOH).orR
   }
 
   val hpmEvents = Wire(Vec(numPCntHc * coreParams.L2NBanks, new PerfEvent))
   for (i <- 0 until numPCntHc * coreParams.L2NBanks) {
     hpmEvents(i) := csrio.perf.perfEventsHc(i)
+  }
+
+  // print perfEvents
+  val allPerfEvents = hpmEvents.map(x => (s"Hc", x.value))
+  if (printEventCoding) {
+    for (((name, inc), i) <- allPerfEvents.zipWithIndex) {
+      println("CSR perfEvents Set", name, inc, i)
+    }
   }
 
   val csrevents = perfEvents.slice(24, 29)
