@@ -114,7 +114,7 @@ class CSREnumType(
   val msb: Int,
   val lsb: Int,
 )(
-  val rwType: CSRRWType,
+  var rwType: CSRRWType,
 )(
   override val factory: ChiselEnum
 ) extends EnumType(factory) {
@@ -176,6 +176,19 @@ class CSREnumType(
 
   def dumpName = {
     s"${chisel3.reflect.DataMirror.queryNameGuess(this)} ${rwType} [$msb, $lsb] reset($init)"
+  }
+
+  private def setRwType(newType: CSRRWType): this.type = {
+    this.rwType = newType
+    this
+  }
+
+  def setRO(rfn: CSRRfnType = null): this.type = {
+    this.setRwType(ROType(rfn))
+  }
+
+  def setRW(): this.type = {
+    this.setRwType(RWType())
   }
 }
 
