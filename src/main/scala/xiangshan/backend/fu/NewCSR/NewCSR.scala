@@ -62,7 +62,7 @@ class NewCSR(implicit val p: Parameters) extends Module
       val trap = ValidIO(new Bundle {
         val pc = UInt(VaddrMaxWidth.W)
         val instr = UInt(32.W)
-        val trapVec = Vec(64, Bool())
+        val trapVec = UInt(64.W)
         val singleStep = Bool()
         val crossPageIPFFix = Bool()
         val isInterrupt = Bool()
