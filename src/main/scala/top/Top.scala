@@ -276,6 +276,6 @@ object TopMain extends App {
   ChiselDB.init(enableChiselDB && !envInFPGA)
 
   val soc = DisableMonitors(p => LazyModule(new XSTop()(p)))(config)
-  Generator.execute(firrtlOpts, soc.module, firtoolOpts)
+  Generator.execute(firrtlOpts :+ "--full-stacktrace", soc.module, firtoolOpts :+ "--disable-annotation-unknown" :+ "--lowering-options=explicitBitcast,disallowLocalVariables,disallowPortDeclSharing,locationInfoStyle=none")
   FileRegisters.write(fileDir = "./build", filePrefix = "XSTop.")
 }
