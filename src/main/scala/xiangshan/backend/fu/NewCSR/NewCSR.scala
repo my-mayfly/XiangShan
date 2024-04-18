@@ -107,6 +107,14 @@ class NewCSR(implicit val p: Parameters) extends Module
       // debug
       val debugMode = Bool()
     })
+    // tlb
+    val tlb = Output(new Bundle {
+      val satp = UInt(XLEN.W)
+      val mxr = Bool()
+      val sum = Bool()
+      val imode = UInt(2.W)
+      val dmode = UInt(2.W)
+    })
   })
 
   val toAIA   = IO(Output(new CSRToAIABundle))
@@ -430,6 +438,13 @@ class NewCSR(implicit val p: Parameters) extends Module
   toAIA.mClaim := isCSRAccess && mtopei.addr.U === addr
   toAIA.sClaim := isCSRAccess && stopei.addr.U === addr
   toAIA.vsClaim := isCSRAccess && vstopei.addr.U === addr
+
+  // tlb
+  io.tlb.satp := satp.rdata.asUInt
+  io.tlb.mxr := mstatus.rdata.MXR.asBool
+  io.tlb.sum := mstatus.rdata.SUM.asBool
+  io.tlb.imode := PRVM.asUInt
+  io.tlb.dmode := Mux((debugMode && dcsr.rdata.MPRVEN.asBool || !debugMode) && mstatus.rdata.MPRV.asBool, mstatus.rdata.MPP.asUInt, PRVM.asUInt)
 }
 
 trait SupervisorMachineAliasConnect { self: NewCSR with MachineLevel with SupervisorLevel =>
