@@ -7,7 +7,7 @@ import top.{ArgParser, Generator}
 import xiangshan.{HasXSParameter, XSCoreParamsKey, XSTileKey}
 import xiangshan.backend.fu.NewCSR.CSRBundles.PrivState
 import xiangshan.backend.fu.NewCSR.CSRDefines.{PrivMode, VirtMode}
-import xiangshan.backend.fu.NewCSR.CSREvents.{CSREvents, EventUpdatePrivStateOutput, MretEventSinkBundle, SretEventSinkBundle, DretEventSinkBundle, TrapEntryEventInput, TrapEntryHSEventSinkBundle, TrapEntryMEventSinkBundle, TrapEntryVSEventSinkBundle}
+import xiangshan.backend.fu.NewCSR.CSREvents.{CSREvents, DretEventSinkBundle, EventUpdatePrivStateOutput, MretEventSinkBundle, SretEventSinkBundle, TrapEntryEventInput, TrapEntryHSEventSinkBundle, TrapEntryMEventSinkBundle, TrapEntryVSEventSinkBundle}
 import xiangshan.backend.fu.fpu.Bundles.{Fflags, Frm}
 import xiangshan.backend.fu.vector.Bundles.{Vxrm, Vxsat}
 
@@ -119,7 +119,13 @@ class NewCSR(implicit val p: Parameters) extends Module
     })
     // customCtrl
     val customCtrl = Output(new Bundle {
+      val sbpctl = UInt(XLEN.W)
       val spfctl = UInt(XLEN.W)
+      val slvpredctl = UInt(XLEN.W)
+      val smblockctl = UInt(XLEN.W)
+      val srnctl = UInt(XLEN.W)
+      val sdsid = UInt(XLEN.W)
+      val sfetchctl  = Bool()
     })
   })
 
@@ -334,12 +340,6 @@ class NewCSR(implicit val p: Parameters) extends Module
       in.dpc  := dpc.regOut
       in.mstatus := mstatus.regOut
   }
-  wfiEvent.valid := isWfi
-  wfiEvent.in match {
-    case in =>
-      in.mie := mie.regOut
-      in.mip := mip.regOut
-  }
 
   PRVM := MuxCase(
     PRVM,
@@ -430,7 +430,7 @@ class NewCSR(implicit val p: Parameters) extends Module
   io.out.vlenb := vlenb.rdata.asUInt
   io.out.isPerfCnt := addrInPerfCnt
   io.out.interrupt := intrBitSet
-  io.out.wfi_event :=  wfiEvent.out.wfi_event.bits
+  io.out.wfi_event := debugIntr || (mie.rdata.asUInt & mip.rdata.asUInt).orR
   io.out.debugMode := debugMode
   io.out.disableSfence := tvmNotPermit || PRVM === PrivMode.U
 
@@ -458,7 +458,13 @@ class NewCSR(implicit val p: Parameters) extends Module
   io.tlb.dmode := Mux((debugMode && dcsr.rdata.MPRVEN.asBool || !debugMode) && mstatus.rdata.MPRV.asBool, mstatus.rdata.MPP.asUInt, PRVM.asUInt)
 
   // customCtrl
+  io.customCtrl.sbpctl := sbpctl.rdata.asUInt
   io.customCtrl.spfctl := spfctl.rdata.asUInt
+  io.customCtrl.slvpredctl := slvpredctl.rdata.asUInt
+  io.customCtrl.smblockctl := smblockctl.rdata.asUInt
+  io.customCtrl.srnctl := srnctl.rdata.asUInt
+  io.customCtrl.sdsid := sdsid.rdata.asUInt
+  io.customCtrl.sfetchctl := sfetchctl.rdata.ICACHE_PARITY_ENABLE.asBool
 }
 
 trait SupervisorMachineAliasConnect { self: NewCSR with MachineLevel with SupervisorLevel =>
