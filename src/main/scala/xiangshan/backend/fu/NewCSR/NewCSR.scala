@@ -5,11 +5,12 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import top.{ArgParser, Generator}
 import xiangshan.{HasXSParameter, XSCoreParamsKey, XSTileKey}
-import xiangshan.backend.fu.NewCSR.CSRBundles.PrivState
+import xiangshan.backend.fu.NewCSR.CSRBundles.{PrivState, RobCommitCSR}
 import xiangshan.backend.fu.NewCSR.CSRDefines.{PrivMode, VirtMode}
 import xiangshan.backend.fu.NewCSR.CSREvents.{CSREvents, DretEventSinkBundle, EventUpdatePrivStateOutput, MretEventSinkBundle, SretEventSinkBundle, TrapEntryEventInput, TrapEntryHSEventSinkBundle, TrapEntryMEventSinkBundle, TrapEntryVSEventSinkBundle}
-import xiangshan.backend.fu.fpu.Bundles.{Fflags, Frm}
+import xiangshan.backend.fu.fpu.Bundles.Frm
 import xiangshan.backend.fu.vector.Bundles.{Vxrm, Vxsat}
+import xiangshan.{XSCoreParamsKey, XSTileKey}
 
 object CSRConfig {
   final val GEILEN = 63
@@ -30,6 +31,13 @@ object CSRConfig {
   final val VaddrMaxWidth = 41 // only Sv39 and Sv39x4
 
   final val XLEN = 64 // Todo: use XSParams
+
+  final val VLEN = 128
+
+  // Since we need macro to compute the width of CSR field, the input of macro should be the value that can be computed
+  // at compile time. The log2Up function cannot be used as meta-programming function, so we use litral value here
+  // log2Up(128 + 1), hold 0~128
+  final val VlWidth = 8
 }
 
 class NewCSR(implicit val p: Parameters) extends Module
@@ -69,14 +77,7 @@ class NewCSR(implicit val p: Parameters) extends Module
         val crossPageIPFFix = Bool()
         val isInterrupt = Bool()
       })
-      val commit = new Bundle {
-        val fflags = ValidIO(Fflags())
-        val fsDirty = Bool()
-        val vxsat = ValidIO(Vxsat())
-        val vsDirty = Bool()
-        val commitValid = Bool()
-        val commitInstRet = UInt(8.W)
-      }
+      val commit = Input(new RobCommitCSR)
     })
     val mret = Input(Bool())
     val sret = Input(Bool())
@@ -247,9 +248,8 @@ class NewCSR(implicit val p: Parameters) extends Module
       case _ =>
     }
     mod match {
-      case m: HasInstCommitBundle =>
-        m.commitValid   := io.fromRob.commit.commitValid
-        m.commitInstNum := io.fromRob.commit.commitInstRet
+      case m: HasRobCommitBundle =>
+        m.robCommit := io.fromRob.commit
       case _ =>
     }
     mod match {
