@@ -279,9 +279,6 @@ class NewCSR(implicit val p: Parameters) extends Module
     mod.w.wdata := wdata
   }
 
-  permitMod.io.in.status.tsr := mstatus.rdata.TSR.asBool
-  permitMod.io.in.status.vtsr := hstatus.rdata.VTSR.asBool
-
   csrMods.foreach { mod =>
     mod match {
       case m: HypervisorBundle =>
