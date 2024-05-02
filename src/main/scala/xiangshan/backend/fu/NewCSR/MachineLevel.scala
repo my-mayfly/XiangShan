@@ -122,7 +122,7 @@ trait MachineLevel { self: NewCSR =>
 
     // When bit 9 of mvien is zero, the value of bit 9 of mvip is logically ORed into the readable value of mip.SEIP.
     // when bit 9 of mvien is one, bit SEIP in mip is read-only and does not include the value of bit 9 of mvip.
-    rdata.SEIP := Mux(!mvien.SEIE.asUInt.asBool, reg.SEIP.asUInt.asBool | mvip.SEIP.asUInt.asBool | SEIP, SEIP)
+    rdata.SEIP := Mux(!mvien.SEIE.asUInt.asBool, reg.SEIP.asUInt.asBool | mvip.SEIP.asUInt.asBool | platformIRP.SEIP, platformIRP.SEIP)
     when (wen && !mvien.SEIE.asUInt.asBool) { reg.SEIP := reg.SEIP }
     when (fromMvip.SSIP.valid) { reg.SSIP := fromMvip.SSIP.bits }
     when (fromMvip.STIP.valid) { reg.STIP := fromMvip.STIP.bits }
