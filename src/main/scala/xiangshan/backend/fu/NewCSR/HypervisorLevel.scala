@@ -1,17 +1,12 @@
 package xiangshan.backend.fu.NewCSR
 
 import chisel3._
-import xiangshan.backend.fu.NewCSR.CSRDefines.{
-  CSRRWField => RW,
-  CSRROField => RO,
-  CSRWLRLField => WLRL,
-  CSRWARLField => WARL,
-  _
-}
+import xiangshan.backend.fu.NewCSR.CSRDefines.{CSRROField => RO, CSRRWField => RW, CSRWARLField => WARL, CSRWLRLField => WLRL, _}
 import xiangshan.backend.fu.NewCSR.CSRFunc._
 import xiangshan.backend.fu.NewCSR.CSRConfig._
 
 import scala.collection.immutable.SeqMap
+import xiangshan.backend.fu.NewCSR.CSREnumTypeImplicitCast._
 
 trait HypervisorLevel { self: NewCSR =>
 
@@ -22,13 +17,12 @@ trait HypervisorLevel { self: NewCSR =>
   val hideleg = Module(new CSRModule("Hideleg", new HidelegBundle)).setAddr(0x603)
 
   val hie = Module(new CSRModule("Hie", new HieBundle) with HypervisorBundle {
-    val writeFromVsie = IO(Flipped(new VsieWriteHie))
     val wAliasVsie = IO(Input(new CSRAddrWriteBundle(new Vsie)))
     val wVsieIn = WireInit(wAliasVsie)
-    wVsieIn.wen := wAliasVsie.wen && hideleg.VSSI
-    Flipped
-
+    wVsieIn.wen :=  (wAliasVsie.wen && hideleg.VSSI)
   }).setAddr(0x604)
+
+  hie.wAliasVsie := DontCare
 
   val htimedelta = Module(new CSRModule("Htimedelta", new CSRBundle {
     val VALUE = RW(63, 0)

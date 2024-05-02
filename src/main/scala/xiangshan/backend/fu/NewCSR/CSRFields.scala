@@ -275,3 +275,22 @@ trait CSRMacroApply { self: CSREnum =>
   def RefWARL(ref: CSREnumType, msb: Int, lsb: Int, wfn: CSRWfnType): CSREnumType = self
     .apply(RefWARLType(Some(ref), wfn))(msb, lsb)(ref.factory)
 }
+
+object CSREnumTypeImplicitCast {
+  implicit def CSREnumTypeToUInt(field: CSREnumType): UInt = {
+    field.asUInt
+  }
+
+  class BoolField(val value: Bool) {
+    def && (field: CSREnumType): Bool = {
+      this.value && field.asBool
+    }
+
+    def || (field: CSREnumType): Bool = {
+      this.value || field.asBool
+    }
+  }
+
+  implicit def BoolToBoolField(bool: Bool): BoolField = new BoolField(bool)
+}
+

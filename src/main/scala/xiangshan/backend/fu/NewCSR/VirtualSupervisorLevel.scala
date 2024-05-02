@@ -9,21 +9,21 @@ import xiangshan.backend.fu.NewCSR.CSRDefines.{
   CSRWARLField => WARL,
   _
 }
+import xiangshan.backend.fu.NewCSR.CSREnumTypeImplicitCast.CSREnumTypeToUInt
 
 import scala.collection.immutable.SeqMap
 
 trait VirtualSupervisorLevel { self: NewCSR =>
-
   val vsstatus = Module(new CSRModule("Vsstatus", new SstatusBundle)).setAddr(0x200)
   val vsip = Module(new CSRModule("Vsip", new Vsip) with HypervisorBundle {
     val writeHie = IO(new VsieWriteHie)
     // read alias of hip is here, write alias will be in hvip
     // hip.VSEIP is read-only
-    rdata.SEIP := Mux(hideleg.VSEI === 0.U, 0.U, hip.VSEIP)
+    rdata.SEIP := Mux(hideleg.VSEI === 0.U, 0.U, hip.VSEIP.asBool)
     // hip.VSTIP is read-only
-    rdata.STIP := Mux(hideleg.VSTI === 0.U, 0.U, hip.VSTIP)
+    rdata.STIP := Mux(hideleg.VSTI === 0.U, 0.U, hip.VSTIP.asBool)
     // hip.VSSIP is an alias (writable) of the same bit in hvip
-    rdata.SSIP := Mux(hideleg.VSSI === 0.U, 0.U, hip.VSSIP)
+    rdata.SSIP := Mux(hideleg.VSSI === 0.U, 0.U, hip.VSSIP.asBool)
 
     writeHie.SEIP.valid := wen && hideleg.VSEI.asUInt.asBool
     writeHie.STIP.valid := wen && hideleg.VSTI.asUInt.asBool
@@ -31,18 +31,36 @@ trait VirtualSupervisorLevel { self: NewCSR =>
     writeHie.SEIP.bits := wdata.SEIP
     writeHie.STIP.bits := wdata.STIP
     writeHie.SSIP.bits := wdata.SSIP
-  })
+  }).setAddr(0x244)
 
   val vsie = Module(new CSRModule("Vsie", new Vsie) with HypervisorBundle {
     // read alias of hie is here, write alias will be in hip
-    rdata.SEIE := Mux(hideleg.VSEI === 0.U, 0.U, hip.VSEIP)
-    rdata.STIE := Mux(hideleg.VSTI === 0.U, 0.U, hip.VSTIP)
-    rdata.SSIE := Mux(hideleg.VSSI === 0.U, 0.U, hip.VSSIP)
-  })
+    rdata.SEIE := Mux(hideleg.VSEI === 0.U, 0.U, hip.VSEIP.asBool)
+    rdata.STIE := Mux(hideleg.VSTI === 0.U, 0.U, hip.VSTIP.asBool)
+    rdata.SSIE := Mux(hideleg.VSSI === 0.U, 0.U, hip.VSSIP.asBool)
+  }).setAddr(0x204)
+
+  vsip.hideleg := DontCare
+  vsip.hideleg := DontCare
 
   val virtualSupervisorCSRMods = Seq(
     vsstatus,
+    vsip,
+    vsie,
   )
+
+  virtualSupervisorCSRMods.foreach {
+    case mod: HypervisorBundle =>
+      mod.hstatus := hstatus.rdata
+      mod.hvip := hvip.rdata
+      mod.hideleg := hideleg.rdata
+      mod.hedeleg := hedeleg.rdata
+      mod.hgeip := hgeip.rdata
+      mod.hgeie := hgeie.rdata
+      mod.hip := hip.rdata
+      mod.hie := hie.rdata
+    case _ =>
+  }
 
   virtualSupervisorCSRMods.foreach(mod =>
     require(mod.addr > 0, s"The address of ${mod.modName} has not been set, you can use setAddr(CSRAddr) to set it."))
