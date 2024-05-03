@@ -512,6 +512,8 @@ trait HasXSParameter {
     }
   } // VAddrBits is Virtual Memory addr bits
 
+  val VAddrMaxBits = coreParams.VAddrBits max coreParams.GPAddrBits
+
   val AsidLength = coreParams.AsidLength
   val VmidLength = coreParams.VmidLength
   val ReSelectLen = coreParams.ReSelectLen
