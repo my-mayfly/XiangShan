@@ -174,11 +174,11 @@ class CSR(cfg: FuConfig)(implicit p: Parameters) extends FuncUnit(cfg)
   csrOut.vpu.vl     := csrMod.io.out.vl
   csrOut.vpu.vtype  := csrMod.io.out.vtype
   csrOut.vpu.vlenb  := csrMod.io.out.vlenb
-  csrOut.vpu.vill   := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VILL
-  csrOut.vpu.vma    := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VMA
-  csrOut.vpu.vta    := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VTA
-  csrOut.vpu.vsew   := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VSEW
-  csrOut.vpu.vlmul  := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VLMUL
+  csrOut.vpu.vill   := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VILL.asUInt
+  csrOut.vpu.vma    := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VMA.asUInt
+  csrOut.vpu.vta    := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VTA.asUInt
+  csrOut.vpu.vsew   := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VSEW.asUInt
+  csrOut.vpu.vlmul  := csrMod.io.out.vtype.asTypeOf(new VtypeBundle).VLMUL.asUInt
 
   csrOut.isXRet := isXRetFlag
 
