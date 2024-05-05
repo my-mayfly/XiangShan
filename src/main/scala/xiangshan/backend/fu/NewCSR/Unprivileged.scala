@@ -6,6 +6,7 @@ import xiangshan.backend.fu.NewCSR.CSRFunc._
 import xiangshan.backend.fu.vector.Bundles._
 import xiangshan.backend.fu.NewCSR.CSRConfig._
 import xiangshan.backend.fu.fpu.Bundles.{Fflags, Frm}
+import xiangshan.backend.fu.NewCSR.CSREnumTypeImplicitCast._
 
 import scala.collection.immutable.SeqMap
 
@@ -28,11 +29,11 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
     this.wfn(reg)(Seq(wAliasFflags, wAliasFfm))
 
     when (robCommit.fflags.valid) {
-      reg.NX := robCommit.fflags.bits(0) | reg.NX
-      reg.UF := robCommit.fflags.bits(1) | reg.UF
-      reg.OF := robCommit.fflags.bits(2) | reg.OF
-      reg.DZ := robCommit.fflags.bits(3) | reg.DZ
-      reg.NV := robCommit.fflags.bits(4) | reg.NV
+      reg.NX := robCommit.fflags.bits(0) || reg.NX
+      reg.UF := robCommit.fflags.bits(1) || reg.UF
+      reg.OF := robCommit.fflags.bits(2) || reg.OF
+      reg.DZ := robCommit.fflags.bits(3) || reg.DZ
+      reg.NV := robCommit.fflags.bits(4) || reg.NV
     }
 
     // read connection
@@ -46,8 +47,8 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
   }) with HasRobCommitBundle {
     // Todo make The use of vstart values greater than the largest element index for the current SEW setting is reserved.
     // Not trap
-    when (wen && io.in.wdata < VLEN.U) {
-      reg.vstart := io.in.wdata
+    when (wen && this.w.wdata < VLEN.U) {
+      reg.vstart := this.w.wdata(VlWidth - 2, 0)
     }.elsewhen (robCommit.vstart.valid) {
       reg.vstart := robCommit.vstart.bits
     }
@@ -96,7 +97,7 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
     .setAddr(0xC21)
 
   val vlenb = Module(new CSRModule("Vlenb", new CSRBundle {
-    val VLENB = RO(63, 0, /*resetVal = */ (VLEN / 8).U)
+    val VLENB = VlenbField(63, 0).withReset(VlenbField.init)
   }))
     .setAddr(0xC22)
 
@@ -154,4 +155,8 @@ class CSRFFlagsBundle extends CSRBundle {
   val OF = WARL(2, wNoFilter)
   val DZ = WARL(3, wNoFilter)
   val NV = WARL(4, wNoFilter)
+}
+
+object VlenbField extends CSREnum with ROApply {
+  val init = Value((VLEN / 8).U)
 }

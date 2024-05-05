@@ -2,16 +2,16 @@ package xiangshan.backend.fu.NewCSR
 
 import chisel3._
 import chisel3.util._
+import freechips.rocketchip.rocket.CSRs
 import org.chipsalliance.cde.config.Parameters
 import top.{ArgParser, Generator}
-import xiangshan.{HasXSParameter, XSCoreParamsKey, XSTileKey}
 import xiangshan.backend.fu.NewCSR.CSRBundles.{PrivState, RobCommitCSR}
 import xiangshan.backend.fu.NewCSR.CSRDefines.{ContextStatus, PrivMode, VirtMode}
+import xiangshan.backend.fu.NewCSR.CSREnumTypeImplicitCast._
 import xiangshan.backend.fu.NewCSR.CSREvents.{CSREvents, DretEventSinkBundle, EventUpdatePrivStateOutput, MretEventSinkBundle, SretEventSinkBundle, TrapEntryEventInput, TrapEntryHSEventSinkBundle, TrapEntryMEventSinkBundle, TrapEntryVSEventSinkBundle}
 import xiangshan.backend.fu.fpu.Bundles.Frm
 import xiangshan.backend.fu.vector.Bundles.{Vl, Vxrm, Vxsat}
-import xiangshan.{XSCoreParamsKey, XSTileKey}
-import freechips.rocketchip.rocket.CSRs
+import xiangshan.{HasXSParameter, XSCoreParamsKey, XSTileKey}
 
 object CSRConfig {
   final val GEILEN = 63
@@ -502,6 +502,7 @@ class NewCSR(implicit val p: Parameters) extends Module
   io.out.wfi_event := debugIntr || (mie.rdata.asUInt & mip.rdata.asUInt).orR
   io.out.debugMode := debugMode
   io.out.disableSfence := tvmNotPermit || PRVM === PrivMode.U
+  io.out.singleStepFlag := !debugMode && dcsr.rdata.STEP
 
   // Todo: record the last address to avoid xireg is different with xiselect
   toAIA.addr.valid := isCSRAccess && Seq(miselect, siselect, vsiselect).map(
