@@ -85,7 +85,3 @@ object DcsrCause extends CSREnum with ROApply {
   val resethaltreq = Value(5.U)
   val group        = Value(6.U)
 }
-
-trait HasDebugExternalInterruptBundle {
-  val debugIRP = IO(Input(Bool()))
-}
