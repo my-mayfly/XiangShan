@@ -236,6 +236,7 @@ class NewCSR(implicit val p: Parameters) extends Module
     mod match {
       case m: DretEventSinkBundle =>
         m.retFromD := dretEvent.out
+      case _ =>
     }
     mod match {
       case m: HasAIABundle =>
