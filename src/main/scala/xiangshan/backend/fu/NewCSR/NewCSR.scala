@@ -261,8 +261,8 @@ class NewCSR(implicit val p: Parameters) extends Module
   permitMod.io.in.mret := isMret
   permitMod.io.in.sret := isSret
 
-  permitMod.io.in.status.tsr := mstatus.rdata.TSR
-  permitMod.io.in.status.vtsr := hstatus.rdata.VTSR
+  permitMod.io.in.status.tsr := mstatus.rdata.TSR.asBool
+  permitMod.io.in.status.vtsr := hstatus.rdata.VTSR.asBool
 
   csrMods.foreach { mod =>
     mod match {
