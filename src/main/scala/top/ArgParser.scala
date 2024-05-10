@@ -73,7 +73,7 @@ object ArgParser {
             }
             case MaxHartIdBits =>
               require(log2Up(value.toInt) <= 10, "MaxHartIdBits should not be larger than 10.")
-              log2Up(value.toInt)
+              log2Up(value.toInt) max 6
           }), tail)
         case "--with-dramsim3" :: tail =>
           nextOption(config.alter((site, here, up) => {
