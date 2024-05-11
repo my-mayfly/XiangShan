@@ -584,6 +584,9 @@ class NewCSR(implicit val p: Parameters) extends Module
   io.out.privState.PRVM := PRVM
   io.out.privState.V    := V
 
+  io.out.EX_II := permitMod.io.out.EX_II || Cat(csrMods.map(mod => !(addr === mod.addr.U)).reverse).andR
+  io.out.EX_VI := permitMod.io.out.EX_VI
+  io.out.flushPipe := flushPipe
   io.out.fpState.frm := fcsr.frm
   io.out.fpState.off := mstatus.rdata.FS === ContextStatus.Off
   io.out.vecState.vstart := vstart.rdata.asUInt
