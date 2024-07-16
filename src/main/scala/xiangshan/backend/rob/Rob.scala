@@ -57,6 +57,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
     val exception = ValidIO(new ExceptionInfo)
     // exu + brq
     val writeback: MixedVec[ValidIO[ExuOutput]] = Flipped(params.genWrite2CtrlBundles)
+    val exuWriteback: MixedVec[ValidIO[ExuOutput]] = Flipped(params.genWrite2CtrlBundles)
     val writebackNums = Flipped(Vec(writeback.size - params.StdCnt, ValidIO(UInt(writeback.size.U.getWidth.W))))
     val writebackNeedFlush = Input(Vec(params.allExuParams.filter(_.needExceptionGen).length, Bool()))
     val commits = Output(new RobCommitIO)
@@ -79,10 +80,6 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
         val hasVsetvl = Output(Bool())
       }
     }
-    val fromDecode = new Bundle {
-      val lastSpecVType = Flipped(Valid(new VType))
-      val specVtype = Input(new VType)
-    }
     val readGPAMemAddr = ValidIO(new Bundle {
       val ftqPtr = new FtqPtr()
       val ftqOffset = UInt(log2Up(PredictWidth).W)
@@ -103,12 +100,12 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
     val debugRolling = new RobDebugRollingIO
   })
 
-  val exuWBs: Seq[ValidIO[ExuOutput]] = io.writeback.filter(!_.bits.params.hasStdFu).toSeq
-  val stdWBs: Seq[ValidIO[ExuOutput]] = io.writeback.filter(_.bits.params.hasStdFu).toSeq
-  val fflagsWBs = io.writeback.filter(x => x.bits.fflags.nonEmpty).toSeq
+  val exuWBs: Seq[ValidIO[ExuOutput]] = io.exuWriteback.filter(!_.bits.params.hasStdFu).toSeq
+  val stdWBs: Seq[ValidIO[ExuOutput]] = io.exuWriteback.filter(_.bits.params.hasStdFu).toSeq
+  val fflagsWBs = io.exuWriteback.filter(x => x.bits.fflags.nonEmpty).toSeq
   val exceptionWBs = io.writeback.filter(x => x.bits.exceptionVec.nonEmpty).toSeq
   val redirectWBs = io.writeback.filter(x => x.bits.redirect.nonEmpty).toSeq
-  val vxsatWBs = io.writeback.filter(x => x.bits.vxsat.nonEmpty).toSeq
+  val vxsatWBs = io.exuWriteback.filter(x => x.bits.vxsat.nonEmpty).toSeq
 
   val numExuWbPorts = exuWBs.length
   val numStdWbPorts = stdWBs.length
@@ -290,8 +287,6 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   io.toDecode.isResumeVType := vtypeBuffer.io.toDecode.isResumeVType
   io.toDecode.commitVType := vtypeBuffer.io.toDecode.commitVType
   io.toDecode.walkVType := vtypeBuffer.io.toDecode.walkVType
-  vtypeBuffer.io.fromDecode.lastSpecVType := io.fromDecode.lastSpecVType
-  vtypeBuffer.io.fromDecode.specVtype := io.fromDecode.specVtype
 
   // When blockBackward instruction leaves Rob (commit or walk), hasBlockBackward should be set to false.B
   // To reduce registers usage, for hasBlockBackward cases, we allow enqueue after ROB is empty.

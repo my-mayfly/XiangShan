@@ -942,8 +942,11 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   // will be force writebacked to rob
   val s2_exception_vec = WireInit(s2_in.uop.exceptionVec)
   when (!s2_in.delayedLoadError) {
-    s2_exception_vec(loadAccessFault) := (s2_in.uop.exceptionVec(loadAccessFault) || s2_pmp.ld ||
-                                       (io.dcache.resp.bits.tag_error && GatedValidRegNext(io.csrCtrl.cache_error_enable))) && s2_vecActive
+    s2_exception_vec(loadAccessFault) := (s2_in.uop.exceptionVec(loadAccessFault) ||
+                                         s2_pmp.ld ||
+                                         s2_isvec && s2_pmp.mmio && !s2_prf && !s2_in.tlbMiss ||
+                                         (io.dcache.resp.bits.tag_error && GatedValidRegNext(io.csrCtrl.cache_error_enable))
+                                         ) && s2_vecActive
   }
 
   // soft prefetch will not trigger any exception (but ecc error interrupt may
@@ -1128,6 +1131,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   io.feedback_fast.bits.flushState       := s2_in.ptwBack
   io.feedback_fast.bits.robIdx           := s2_in.uop.robIdx
   io.feedback_fast.bits.sqIdx            := s2_in.uop.sqIdx
+  io.feedback_fast.bits.lqIdx            := s2_in.uop.lqIdx
   io.feedback_fast.bits.sourceType       := RSFeedbackType.lrqFull
   io.feedback_fast.bits.dataInvalidSqIdx := DontCare
 
@@ -1323,6 +1327,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   io.feedback_slow.bits.flushState       := s3_in.ptwBack
   io.feedback_slow.bits.robIdx           := s3_in.uop.robIdx
   io.feedback_slow.bits.sqIdx            := s3_in.uop.sqIdx
+  io.feedback_slow.bits.lqIdx            := s3_in.uop.lqIdx
   io.feedback_slow.bits.sourceType       := RSFeedbackType.lrqFull
   io.feedback_slow.bits.dataInvalidSqIdx := DontCare
 
@@ -1387,7 +1392,8 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   val s3_outexception = ExceptionNO.selectByFu(s3_out.bits.uop.exceptionVec, LduCfg).asUInt.orR && s3_vecActive
   io.ldout.bits        := s3_ld_wb_meta
   io.ldout.bits.data   := Mux(s3_valid, Mux(!s3_outexception, s3_ld_data_frm_cache, 0.U), s3_ld_data_frm_uncache)
-  io.ldout.valid       := (s3_out.valid || (s3_mmio.valid && !s3_valid)) && !s3_vecout.isvec
+  io.ldout.valid       := (s3_out.valid && !s3_vecout.isvec || (s3_mmio.valid && !s3_valid))
+  io.ldout.bits.uop.exceptionVec := ExceptionNO.selectByFu(s3_ld_wb_meta.uop.exceptionVec, LduCfg)
 
   // TODO: check this --hx
   // io.ldout.valid       := s3_out.valid && !s3_out.bits.uop.robIdx.needFlush(io.redirect) && !s3_vecout.isvec ||
@@ -1420,7 +1426,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   io.vecldout.bits.hit := !s3_rep_info.need_rep || io.lsq.ldin.ready
   io.vecldout.bits.sourceType := RSFeedbackType.lrqFull
   io.vecldout.bits.flushState := DontCare
-  io.vecldout.bits.exceptionVec := s3_out.bits.uop.exceptionVec
+  io.vecldout.bits.exceptionVec := ExceptionNO.selectByFu(s3_out.bits.uop.exceptionVec, VlduCfg)
   io.vecldout.bits.vaddr := s3_in.vaddr
   io.vecldout.bits.mmio := DontCare
 
