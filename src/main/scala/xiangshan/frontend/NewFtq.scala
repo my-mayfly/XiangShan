@@ -86,21 +86,27 @@ class Ftq_RF_Components(implicit p: Parameters) extends XSBundle with BPUUtils {
   val fallThruError = Bool()
   // val carry = Bool()
   def getPc(offset: UInt) = {
-    def getHigher(pc: UInt) = pc(VAddrBits - 1, log2Ceil(PredictWidth) + instOffsetBits + 1)
-    def getOffset(pc: UInt) = pc(log2Ceil(PredictWidth) + instOffsetBits, instOffsetBits)
+    def getHigher(pc: UInt) = pc(VAddrBits - 1, log2Up(PredictWidth) + instOffsetBits + 1)
+    def getOffset(pc: UInt) = pc(log2Up(PredictWidth) + instOffsetBits, instOffsetBits)
     Cat(
-      getHigher(Mux(isNextMask(offset) && startAddr(log2Ceil(PredictWidth) + instOffsetBits), nextLineAddr, startAddr)),
+      getHigher(Mux(isNextMask(offset) && startAddr(log2Up(PredictWidth) + instOffsetBits), nextLineAddr, startAddr)),
       getOffset(startAddr) + offset,
       0.U(instOffsetBits.W)
     )
   }
   def fromBranchPrediction(resp: BranchPredictionBundle) = {
-    def carryPos(addr: UInt) = addr(instOffsetBits + log2Ceil(PredictWidth) + 1)
+    def carryPos(addr: UInt) = addr(instOffsetBits + log2Up(PredictWidth) + 1)
     this.startAddr    := resp.pc(3)
-    this.nextLineAddr := resp.pc(3) + (FetchWidth * 4 * 2).U // may be broken on other configs
+    // Affected by ICache, nextlineAddr should be strongly bound to the size of the cache line.
+    this.nextLineAddr := resp.pc(3) +  64.U //(FetchWidth * 4 * 2).U // may be broken on other configs
+    // this.isNextMask := VecInit((0 until PredictWidth).map(i =>
+      // (resp.pc(3)(log2Ceil(PredictWidth), 1) +& i.U)(log2Ceil(PredictWidth)).asBool
+    // ))
+
+    // 经过研究，应该就是一种复用nextLineAaddr的问题，避免64位的加法
     this.isNextMask := VecInit((0 until PredictWidth).map(i =>
-      (resp.pc(3)(log2Ceil(PredictWidth), 1) +& i.U)(log2Ceil(PredictWidth)).asBool
-    ))
+      (resp.pc(3)(log2Up(PredictWidth), 1) +& i.U)(log2Up(PredictWidth)).asBool
+      ))
     this.fallThruError := resp.fallThruError(3)
     this
   }
@@ -111,7 +117,7 @@ class Ftq_RF_Components(implicit p: Parameters) extends XSBundle with BPUUtils {
 class Ftq_pd_Entry(implicit p: Parameters) extends XSBundle {
   val brMask    = Vec(PredictWidth, Bool())
   val jmpInfo   = ValidUndirectioned(Vec(3, Bool()))
-  val jmpOffset = UInt(log2Ceil(PredictWidth).W)
+  val jmpOffset = UInt(log2Up(PredictWidth).W)
   val jalTarget = UInt(VAddrBits.W)
   val rvcMask   = Vec(PredictWidth, Bool())
   def hasJal    = jmpInfo.valid && !jmpInfo.bits(0)
@@ -133,7 +139,7 @@ class Ftq_pd_Entry(implicit p: Parameters) extends XSBundle {
   }
 
   def toPd(offset: UInt) = {
-    require(offset.getWidth == log2Ceil(PredictWidth))
+    require(offset.getWidth == log2Up(PredictWidth))
     val pd = Wire(new PreDecodeInfo)
     pd.valid := true.B
     pd.isRVC := rvcMask(offset)
@@ -162,13 +168,13 @@ class Ftq_1R_SRAMEntry(implicit p: Parameters) extends XSBundle with HasBPUConst
 
 class Ftq_Pred_Info(implicit p: Parameters) extends XSBundle {
   val target   = UInt(VAddrBits.W)
-  val cfiIndex = ValidUndirectioned(UInt(log2Ceil(PredictWidth).W))
+  val cfiIndex = ValidUndirectioned(UInt(log2Up(PredictWidth).W))
 }
 
 class FtqRead[T <: Data](private val gen: T)(implicit p: Parameters) extends XSBundle {
   val valid  = Output(Bool())
   val ptr    = Output(new FtqPtr)
-  val offset = Output(UInt(log2Ceil(PredictWidth).W))
+  val offset = Output(UInt(log2Up(PredictWidth).W))
   val data   = Input(gen)
   def apply(valid: Bool, ptr: FtqPtr, offset: UInt) = {
     this.valid  := valid
@@ -221,7 +227,7 @@ trait HasBackendRedirectInfo extends HasXSParameter {
 class FtqToCtrlIO(implicit p: Parameters) extends XSBundle with HasBackendRedirectInfo {
   // write to backend pc mem
   val pc_mem_wen   = Output(Bool())
-  val pc_mem_waddr = Output(UInt(log2Ceil(FtqSize).W))
+  val pc_mem_waddr = Output(UInt(log2Up(FtqSize).W))
   val pc_mem_wdata = Output(new Ftq_RF_Components)
   // newest target
   val newest_entry_en     = Output(Bool())
@@ -234,7 +240,7 @@ class FTBEntryGen(implicit p: Parameters) extends XSModule with HasBackendRedire
     val start_addr     = Input(UInt(VAddrBits.W))
     val old_entry      = Input(new FTBEntry)
     val pd             = Input(new Ftq_pd_Entry)
-    val cfiIndex       = Flipped(Valid(UInt(log2Ceil(PredictWidth).W)))
+    val cfiIndex       = Flipped(Valid(UInt(log2Up(PredictWidth).W)))
     val target         = Input(UInt(VAddrBits.W))
     val hit            = Input(Bool())
     val mispredict_vec = Input(Vec(PredictWidth, Bool()))
@@ -272,7 +278,7 @@ class FTBEntryGen(implicit p: Parameters) extends XSModule with HasBackendRedire
   val cfi_is_jal  = io.cfiIndex.bits === pd.jmpOffset && new_jmp_is_jal
   val cfi_is_jalr = io.cfiIndex.bits === pd.jmpOffset && new_jmp_is_jalr
 
-  def carryPos = log2Ceil(PredictWidth) + instOffsetBits
+  def carryPos = log2Up(PredictWidth) + instOffsetBits
   def getLower(pc: UInt) = pc(carryPos - 1, instOffsetBits)
   // if not hit, establish a new entry
   init_entry.valid := true.B
@@ -295,9 +301,10 @@ class FTBEntryGen(implicit p: Parameters) extends XSModule with HasBackendRedire
     init_entry.strong_bias(numBr - 1) := new_jmp_is_jalr // set strong bias for the jalr on init
   }
 
+  val pc_add_24 = getLower(io.start_addr) +& 12.U     // 去除了最低位
   val jmpPft = getLower(io.start_addr) +& pd.jmpOffset +& Mux(pd.rvcMask(pd.jmpOffset), 1.U, 2.U)
-  init_entry.pftAddr := Mux(entry_has_jmp && !last_jmp_rvi, jmpPft, getLower(io.start_addr))
-  init_entry.carry   := Mux(entry_has_jmp && !last_jmp_rvi, jmpPft(carryPos - instOffsetBits), true.B)
+  init_entry.pftAddr := Mux(entry_has_jmp && !last_jmp_rvi, jmpPft, getLower(pc_add_24))
+  init_entry.carry   := Mux(entry_has_jmp && !last_jmp_rvi, jmpPft(carryPos - instOffsetBits), pc_add_24(carryPos - 1))
   init_entry.isJalr  := new_jmp_is_jalr
   init_entry.isCall  := new_jmp_is_call
   init_entry.isRet   := new_jmp_is_ret
@@ -651,7 +658,7 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
   val newest_entry_target_modified = RegInit(false.B)
   val newest_entry_ptr             = Reg(new FtqPtr)
   val newest_entry_ptr_modified    = RegInit(false.B)
-  val cfiIndex_vec                 = Reg(Vec(FtqSize, ValidUndirectioned(UInt(log2Ceil(PredictWidth).W))))
+  val cfiIndex_vec                 = Reg(Vec(FtqSize, ValidUndirectioned(UInt(log2Up(PredictWidth).W))))
   val mispredict_vec               = Reg(Vec(FtqSize, Vec(PredictWidth, Bool())))
   val pred_stage                   = Reg(Vec(FtqSize, UInt(2.W)))
   val pred_s1_cycle                = if (!env.FPGAPlatform) Some(Reg(Vec(FtqSize, UInt(64.W)))) else None

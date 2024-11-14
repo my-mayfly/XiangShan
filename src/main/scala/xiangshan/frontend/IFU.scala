@@ -40,7 +40,7 @@ trait HasIFUConst extends HasXSParameter {
 
   def getBasicBlockIdx(pc: UInt, start: UInt): UInt = {
     val byteOffset = pc - start
-    (byteOffset - instBytes.U)(log2Ceil(PredictWidth), instOffsetBits)
+    (byteOffset - instBytes.U)(log2Up(PredictWidth), instOffsetBits)
   }
 }
 
@@ -51,7 +51,7 @@ class IfuToFtqIO(implicit p: Parameters) extends XSBundle {
 class IfuToBackendIO(implicit p: Parameters) extends XSBundle {
   // write to backend gpaddr mem
   val gpaddrMem_wen   = Output(Bool())
-  val gpaddrMem_waddr = Output(UInt(log2Ceil(FtqSize).W)) // Ftq Ptr
+  val gpaddrMem_waddr = Output(UInt(log2Up(FtqSize).W)) // Ftq Ptr
   // 2 gpaddrs, correspond to startAddr & nextLineAddr in bundle FtqICacheInfo
   // TODO: avoid cross page entry in Ftq
   val gpaddrMem_wdata = Output(new GPAMemEntry)
@@ -97,7 +97,7 @@ class IfuToPreDecode(implicit p: Parameters) extends XSBundle {
 }
 
 class IfuToPredChecker(implicit p: Parameters) extends XSBundle {
-  val ftqOffset  = Valid(UInt(log2Ceil(PredictWidth).W))
+  val ftqOffset  = Valid(UInt(log2Up(PredictWidth).W))
   val jumpOffset = Vec(PredictWidth, UInt(XLEN.W))
   val target     = UInt(VAddrBits.W)
   val instrRange = Vec(PredictWidth, Bool())
@@ -420,12 +420,14 @@ class NewIFU(implicit p: Parameters) extends XSModule
     pc(blockOffBits - 1, 0) === "b111110".U
 
   val f2_foldpc = VecInit(f2_pc.map(i => XORFold(i(VAddrBits - 1, 1), MemPredPCWidth)))
-  val f2_jump_range =
-    Fill(PredictWidth, !f2_ftq_req.ftqOffset.valid) | Fill(PredictWidth, 1.U(1.W)) >> ~f2_ftq_req.ftqOffset.bits
-  val f2_ftr_range = Fill(PredictWidth, f2_ftq_req.ftqOffset.valid) | Fill(PredictWidth, 1.U(1.W)) >> ~getBasicBlockIdx(
+//  val f2_jump_range =
+//    Fill(PredictWidth, !f2_ftq_req.ftqOffset.valid) | Fill(PredictWidth, 1.U(1.W)) >> ~f2_ftq_req.ftqOffset.bits
+  val f2_jump_range = 
+      Fill(PredictWidth, !f2_ftq_req.ftqOffset.valid) | Fill(PredictWidth, 1.U(1.W)) >> ((PredictWidth - 1).U -  f2_ftq_req.ftqOffset.bits)
+  val f2_ftr_range = Fill(PredictWidth, f2_ftq_req.ftqOffset.valid) | Fill(PredictWidth, 1.U(1.W)) >> ((PredictWidth - 1).U - getBasicBlockIdx(
     f2_ftq_req.nextStartAddr,
     f2_ftq_req.startAddr
-  )
+  ))
   val f2_instr_range = f2_jump_range & f2_ftr_range
   val f2_exception_vec = VecInit((0 until PredictWidth).map(i =>
     MuxCase(
@@ -898,7 +900,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
   val finishFetchMaskReg = RegNext(f3_cache_fetch)
 
   val mmioFlushWb        = Wire(Valid(new PredecodeWritebackBundle))
-  val f3_mmio_missOffset = Wire(ValidUndirectioned(UInt(log2Ceil(PredictWidth).W)))
+  val f3_mmio_missOffset = Wire(ValidUndirectioned(UInt(log2Up(PredictWidth).W)))
   f3_mmio_missOffset.valid := f3_req_is_mmio
   f3_mmio_missOffset.bits  := 0.U
 

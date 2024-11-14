@@ -42,7 +42,7 @@ trait FTBParams extends HasXSParameter with HasBPUConst {
 }
 
 class FtbSlot_FtqMem(implicit p: Parameters) extends XSBundle with FTBParams {
-  val offset  = UInt(log2Ceil(PredictWidth).W)
+  val offset  = UInt(log2Up(PredictWidth).W)
   val sharing = Bool()
   val valid   = Bool()
 }
@@ -553,7 +553,7 @@ class FTB(implicit p: Parameters) extends BasePredictor with FTBParams with BPUU
     // Check if the entry read by ftbBank is legal.
     for (n <- 0 to numWays - 1) {
       val req_pc_reg       = RegEnable(io.req_pc.bits, 0.U.asTypeOf(io.req_pc.bits), io.req_pc.valid)
-      val req_pc_reg_lower = Cat(0.U(1.W), req_pc_reg(instOffsetBits + log2Ceil(PredictWidth) - 1, instOffsetBits))
+      val req_pc_reg_lower = Cat(0.U(1.W), req_pc_reg(instOffsetBits + log2Up(PredictWidth) - 1, instOffsetBits))
       val ftbEntryEndLowerwithCarry = Cat(read_entries(n).carry, read_entries(n).pftAddr)
       val fallThroughErr            = req_pc_reg_lower + PredictWidth.U >= ftbEntryEndLowerwithCarry
       when(read_entries(n).valid && total_hits(n) && io.s1_fire) {
@@ -689,7 +689,7 @@ class FTB(implicit p: Parameters) extends BasePredictor with FTBParams with BPUU
   }
   val real_s2_ftb_entry         = Mux(s2_multi_hit_enable, s2_multi_hit_entry, s2_ftb_entry_dup(0))
   val real_s2_pc                = s2_pc_dup(0).getAddr()
-  val real_s2_startLower        = Cat(0.U(1.W), real_s2_pc(instOffsetBits + log2Ceil(PredictWidth) - 1, instOffsetBits))
+  val real_s2_startLower        = Cat(0.U(1.W), real_s2_pc(instOffsetBits + log2Up(PredictWidth) - 1, instOffsetBits))
   val real_s2_endLowerwithCarry = Cat(real_s2_ftb_entry.carry, real_s2_ftb_entry.pftAddr)
   val real_s2_fallThroughErr =
     real_s2_startLower >= real_s2_endLowerwithCarry || real_s2_endLowerwithCarry > (real_s2_startLower + PredictWidth.U)
@@ -812,7 +812,7 @@ class FTB(implicit p: Parameters) extends BasePredictor with FTBParams with BPUU
   }
 
   val s3_pc_diff       = s3_pc_dup(0).getAddr()
-  val s3_pc_startLower = Cat(0.U(1.W), s3_pc_diff(instOffsetBits + log2Ceil(PredictWidth) - 1, instOffsetBits))
+  val s3_pc_startLower = Cat(0.U(1.W), s3_pc_diff(instOffsetBits + log2Up(PredictWidth) - 1, instOffsetBits))
   val s3_ftb_entry_endLowerwithCarry = Cat(s3_ftb_entry_dup(0).carry, s3_ftb_entry_dup(0).pftAddr)
   val fallThroughErr =
     s3_pc_startLower >= s3_ftb_entry_endLowerwithCarry || s3_ftb_entry_endLowerwithCarry > (s3_pc_startLower + PredictWidth.U)
@@ -863,7 +863,8 @@ class FTB(implicit p: Parameters) extends BasePredictor with FTBParams with BPUU
 
   val ftb_write_fallThrough = ftb_write.entry.getFallThrough(write_pc)
   when(write_valid) {
-    assert(write_pc + (FetchWidth * 4).U >= ftb_write_fallThrough, s"FTB write_entry fallThrough address error!")
+    XSError(write_pc + (FetchWidth * 4).U < ftb_write_fallThrough, p"new condition $write_pc - $ftb_write_fallThrough\n")
+    //assert(write_pc + (FetchWidth * 4).U >= ftb_write_fallThrough, s"FTB write_entry fallThrough address error!")
   }
 
   XSDebug("req_v=%b, req_pc=%x, ready=%b (resp at next cycle)\n", io.s0_fire(0), s0_pc_dup(0), ftbBank.io.req_pc.ready)
