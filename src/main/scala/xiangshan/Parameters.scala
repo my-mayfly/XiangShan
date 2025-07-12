@@ -129,8 +129,8 @@ case class XSCoreParameters
   ICacheForceDataECCError: Boolean = false,
   IBufSize: Int = 48,
   IBufEnqWidth: Int = 16,
-  IBufWriteBank: Int = 4, 
-  IBufReadBank: Int = 6,
+  IBufWriteBank: Int = 4, // IBuffer bank amount, should divide IBufSize
+  IBufReadBank: Int = 6,  // IBuffer bank amount, should divide IBufSize
   IBufNBank: Int = 6, // IBuffer bank amount, should divide IBufSize
   DecodeWidth: Int = 6,
   RenameWidth: Int = 6,
@@ -710,7 +710,8 @@ trait HasXSParameter {
   def IBufSize = coreParams.IBufSize
   def IBufEnqWidth = coreParams.IBufEnqWidth
   def IBufWriteBank = coreParams.IBufWriteBank
-  def IBufNBank = coreParams.IBufNBank
+  def IBufReadBank = coreParams.IBufReadBank
+  def IBufNRank = coreParams.IBufNBank
   def backendParams: BackendParams = coreParams.backendParams
   def DecodeWidth = coreParams.DecodeWidth
   def RenameWidth = coreParams.RenameWidth
