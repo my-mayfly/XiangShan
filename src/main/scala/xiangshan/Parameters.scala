@@ -128,7 +128,6 @@ case class XSCoreParameters
   ICacheForceMetaECCError: Boolean = false,
   ICacheForceDataECCError: Boolean = false,
   IBufSize: Int = 48,
-  IBufEnqWidth: Int = 16,
   IBufWriteBank: Int = 4, // IBuffer bank amount, should divide IBufSize
   IBufReadBank: Int = 6,  // IBuffer bank amount, should divide IBufSize
   IBufNBank: Int = 6, // IBuffer bank amount, should divide IBufSize
@@ -708,7 +707,7 @@ trait HasXSParameter {
   def ICacheForceMetaECCError = coreParams.ICacheForceMetaECCError
   def ICacheForceDataECCError = coreParams.ICacheForceDataECCError
   def IBufSize = coreParams.IBufSize
-  def IBufEnqWidth = coreParams.IBufEnqWidth
+  def IBufEnqWidth = coreParams.IBufWriteBank + PredictWidth
   def IBufWriteBank = coreParams.IBufWriteBank
   def IBufReadBank = coreParams.IBufReadBank
   def IBufNRank = coreParams.IBufNBank
