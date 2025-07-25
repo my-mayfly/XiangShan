@@ -24,4 +24,5 @@ trait HasIfuParameters extends HasICacheParameters {
   // equal lower_result overflow bit
   def PcCutPoint:       Int = (VAddrBits / 4) - 1
   def IBufferInPortNum: Int = PredictWidth
+  def IfuAlignWidth:    Int = IBufWriteBank
 }
