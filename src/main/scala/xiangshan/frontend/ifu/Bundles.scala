@@ -21,9 +21,9 @@ import org.chipsalliance.cde.config.Parameters
 import utils.EnumUInt
 import xiangshan.cache.mmu.Pbmt
 import xiangshan.frontend.ExceptionType
+import xiangshan.frontend.ibuffer.IBufPtr
 import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.ftq.FtqPtr
-import xiangshan.frontend.ibuffer.IBufPtr
 import xiangshan.frontend.icache.HasICacheParameters
 
 /* ***
@@ -68,7 +68,7 @@ class FetchBlockInfo(implicit p: Parameters) extends IfuBundle {
   val startVAddr:     PrunedAddr  = PrunedAddr(VAddrBits)
   val target:         PrunedAddr  = PrunedAddr(VAddrBits)
   val instrRange:     UInt        = UInt(FetchBlockInstNum.W)
-  val rawInstrValid:  UInt        = UInt(FetchBlockInstNum.W)
+  val rawInstrEndVec: UInt        = UInt(FetchBlockInstNum.W)
   val pcHigh:         UInt        = UInt((VAddrBits - PcCutPoint).W)
   val pcHighPlus1:    UInt        = UInt((VAddrBits - PcCutPoint).W)
   val fetchSize:      UInt        = UInt(log2Ceil(FetchBlockInstNum + 1).W)
