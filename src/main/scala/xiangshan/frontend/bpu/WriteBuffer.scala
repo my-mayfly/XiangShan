@@ -139,8 +139,8 @@ class WriteBuffer[T <: WriteReqBundle](
         entries(portIdx)(victim)    := io.write(portIdx).bits
         valids(portIdx)(victim)     := true.B
         needWrite(portIdx)(victim)  := true.B
-        writeTouchVec(victim).valid := true.B
-        writeTouchVec(victim).bits  := victim
+        writeTouchVec(portIdx).valid := true.B
+        writeTouchVec(portIdx).bits  := victim
       }
 
       // if hit need to update the entry

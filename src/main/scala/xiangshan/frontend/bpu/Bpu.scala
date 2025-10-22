@@ -35,6 +35,7 @@ import xiangshan.frontend.bpu.ras.Ras
 import xiangshan.frontend.bpu.sc.Sc
 import xiangshan.frontend.bpu.tage.Tage
 import xiangshan.frontend.bpu.ubtb.MicroBtb
+import xiangshan.frontend.bpu.utage.MicroTage
 
 class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   class DummyBpuIO extends Bundle {
@@ -50,6 +51,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   private val fallThrough = Module(new FallThroughPredictor)
   private val ubtb        = Module(new MicroBtb)
   private val abtb        = Module(new AheadBtb)
+  private val utage       = Module(new MicroTage)
   private val mbtb        = Module(new MainBtb)
   private val tage        = Module(new Tage)
   private val ittage      = Module(new Ittage)
@@ -61,6 +63,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     fallThrough,
     ubtb,
     abtb,
+    utage,
     mbtb,
     tage,
     sc,
@@ -78,6 +81,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   fallThrough.io.enable := true.B // fallThrough is always enabled
   ubtb.io.enable        := ctrl.ubtbEnable
   abtb.io.enable        := ctrl.abtbEnable
+  utage.io.enable       := ctrl.utageEnable
   mbtb.io.enable        := ctrl.mbtbEnable
   tage.io.enable        := ctrl.tageEnable
   sc.io.enable          := false.B
@@ -182,6 +186,10 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   abtb.io.overrideValid       := s3_override
   abtb.io.t0_previousPc.valid := s4_valid // for fast train
   abtb.io.t0_previousPc.bits  := s4_pc    // for fast train
+
+  // utage
+  utage.io.foldedPathHist         := phr.io.s0_foldedPhr
+  utage.io.foldedPathHistForTrain := phr.io.trainFoldedPhr
 
   // ras
   ras.io.redirect.valid          := redirect.valid
@@ -320,6 +328,9 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   private val s2_abtbMeta = RegEnable(abtb.io.meta, s1_fire)
   private val s3_abtbMeta = RegEnable(s2_abtbMeta, s2_fire)
 
+  // utage meta
+  private val s2_utageMeta = RegEnable(utage.io.prediction, s1_fire)
+  private val s3_utageMeta = RegEnable(s2_utageMeta, s2_fire)
   // mbtb meta
   private val s3_mbtbMeta = RegEnable(mbtb.io.meta, s2_fire)
 
@@ -342,6 +353,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   s3_speculationMeta.topRetAddr := ras.io.topRetAddr
 
   s3_meta.abtb   := s3_abtbMeta
+  s3_meta.utage  := s3_utageMeta
   s3_meta.mbtb   := s3_mbtbMeta
   s3_meta.ras    := s3_rasMeta
   s3_meta.phr    := s3_phrMeta

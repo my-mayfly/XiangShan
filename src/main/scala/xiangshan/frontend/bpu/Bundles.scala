@@ -27,6 +27,7 @@ import xiangshan.frontend.bpu.phr.PhrPtr
 import xiangshan.frontend.bpu.ras.RasInternalMeta
 import xiangshan.frontend.bpu.ras.RasMeta
 import xiangshan.frontend.bpu.sc.ScMeta
+import xiangshan.frontend.bpu.utage.MicroTageMeta
 
 /* *** public const & type *** */
 class BranchAttribute extends Bundle {
@@ -104,6 +105,7 @@ class BpuCtrl extends Bundle {
   // s1 predictor enable
   val ubtbEnable: Bool = Bool()
   val abtbEnable: Bool = Bool()
+  val utageEnable: Bool = Bool()
   // s3 predictor enable
   val mbtbEnable:   Bool = Bool()
   val tageEnable:   Bool = Bool()
@@ -178,7 +180,8 @@ class BpuSpeculationMeta(implicit p: Parameters) extends BpuBundle {
 
 // metadata for training (e.g. aheadBtb, mainBtb-specific)
 class BpuMeta(implicit p: Parameters) extends BpuBundle {
-  val abtb:   AheadBtbMeta = new AheadBtbMeta
+  val abtb:   AheadBtbMeta  = new AheadBtbMeta
+  val utage:  MicroTageMeta = new MicroTageMeta
   val mbtb:   MainBtbMeta  = new MainBtbMeta
   val ras:    RasMeta      = new RasMeta
   val phr:    PhrPtr       = new PhrPtr

@@ -39,8 +39,8 @@ object RasEntry {
 }
 
 class RasPtr(implicit p: Parameters) extends CircularQueuePtr[RasPtr](p =>
-      p(XSCoreParamsKey).frontendParameters.bpuParameters.rasParameters.StackSize
-    ) {}
+  p(XSCoreParamsKey).frontendParameters.bpuParameters.rasParameters.SpecSize
+) {}
 
 object RasPtr {
   def apply(f: Bool, v: UInt)(implicit p: Parameters): RasPtr = {

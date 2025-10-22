@@ -53,7 +53,7 @@ class Ras(implicit p: Parameters) extends BasePredictor with HasRasParameters wi
 
   def alignMask: UInt = ((~0.U(VAddrBits.W)) << FetchBlockAlignWidth).asUInt
 
-  private val stack = Module(new RasStack(StackSize, SpecQueueSize)).io
+  private val stack = Module(new RasStack).io
   // Here is an assertion that the same piece of valid data lasts for only one cycle.
   // io.specIn.valid = s3_fire
   private val stackNearOverflow = stack.specNearOverflow
