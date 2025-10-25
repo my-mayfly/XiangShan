@@ -18,7 +18,13 @@ package xiangshan.frontend.bpu.utage
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
+import xiangshan.frontend.bpu.FoldedHistoryInfo
 import xiangshan.frontend.bpu.SaturateCounter
+import xiangshan.frontend.bpu.phr.PhrAllFoldedHistories
+class TableMeta(implicit p: Parameters) extends MicroTageBundle {
+  val touchWayIdx: UInt = UInt(log2Ceil(MaxNumWays).W)
+  val allocWayIdx: UInt = UInt(log2Ceil(MaxNumWays).W)
+}
 
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
   val hitMap:    Vec[Bool] = Vec(NumTables, Bool())
@@ -28,10 +34,17 @@ class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
   val hit:         Bool      = Bool()
   val taken:       Bool      = Bool()
   val cfiPosition: UInt      = UInt(CfiPositionWidth.W)
+  val tableMeta:   TableMeta = new TableMeta
+  // val writeWay:    UInt      = UInt(log2Ceil(MaxNumWays).W)
 
-  val testPredIdx:       UInt = UInt(TestPredIdxWidth.W)
-  val testPredTag:       UInt = UInt(TestPredTagWidth.W)
+  val testPredIdx0:      UInt = UInt(TestPredIdx0Width.W)
+  val testPredTag0:      UInt = UInt(TestPredTag0Width.W)
+  val testPredIdx1:      UInt = UInt(TestPredIdx1Width.W)
+  val testPredTag1:      UInt = UInt(TestPredTag1Width.W)
+  val testPredIdx2:      UInt = UInt(TestPredIdx2Width.W)
+  val testPredTag2:      UInt = UInt(TestPredTag2Width.W)
   val testPredStartAddr: UInt = UInt(VAddrBits.W)
+//  val testFoldedPathHist: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
 
   // val pred_s0_idx: UInt      = UInt(7.W)
   // val pred_s0_Tag: UInt      = UInt(4.W)

@@ -274,7 +274,8 @@ class MicroBtb(implicit p: Parameters) extends BasePredictor with HasMicroBtbPar
     t1_valid && t1_hit && t1_hitAttributeSame && t1_attribute.isConditional && (
       t1_hitPositionSame && t1_actualTaken && !t1_hitTaken ||
         t1_hitPositionHigh && t1_actualTaken ||
-        !t1_actualTaken && t1_hitTaken
+        !t1_actualTaken && t1_hitTaken ||
+        t1_hitPositionLow && t1_actualTaken
     )
   )
 

@@ -281,6 +281,19 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
       )
     )
 
+  // hitMap =
+  // ubtb.io.prediction.cfiPosition  === utage.io.prediciotn.cfiPosition
+  // abtb.io.prediction.cfiPosition1 === utage.io.prediction.cfiPosition
+  // abtb.io.prediction.cfiPosition2 === utage.io.prediction.cfiPosition
+  // abtb.io.prediction.cfiPosition3 === utage.io.prediction.cfiPosition
+//
+  // val finalTarget = Mux1H(hitMap, target)
+//
+  // s1_prediction :=
+  //   MuxCase(
+//
+  //   )
+
   private val s2_mbtbResult    = mbtb.io.result
   private val s2_condTakenMask = tage.io.condTakenMask
   private val s2_jumpMask = VecInit(s2_mbtbResult.hitMask.zip(s2_mbtbResult.attributes).map { case (hit, attribute) =>
