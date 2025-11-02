@@ -26,23 +26,26 @@ class TableMeta(implicit p: Parameters) extends MicroTageBundle {
   val allocWayIdx: UInt = UInt(log2Ceil(MaxNumWays).W)
 }
 
+class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
+  val taken:        Bool    = Bool()
+  val cfiPosition:  UInt    = UInt(CfiPositionWidth.W)
+  val meta:         Valid[MicroTageMeta] = Valid(new MicroTageMeta)
+}
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
-  val hitMap:    Vec[Bool] = Vec(NumTables, Bool())
-  val usefulMap: UInt      = UInt(NumTables.W)
-  // val usefulMap:   Vec[Bool] = Vec(NumTables, Bool())
-  val takenMap:    Vec[Bool] = Vec(NumTables, Bool())
-  val hit:         Bool      = Bool()
+  val histTableHitMap:    Vec[Bool] = Vec(NumTables, Bool())
+  val histTableUsefulMask: UInt      = UInt(NumTables.W)
+  val histTableTakenMap:    Vec[Bool] = Vec(NumTables, Bool())
+  val histTableHit:         Bool      = Bool()
   val taken:       Bool      = Bool()
   val cfiPosition: UInt      = UInt(CfiPositionWidth.W)
   val tableMeta:   TableMeta = new TableMeta
-  // val writeWay:    UInt      = UInt(log2Ceil(MaxNumWays).W)
 
   val testPredIdx0:      UInt = UInt(TestPredIdx0Width.W)
   val testPredTag0:      UInt = UInt(TestPredTag0Width.W)
   val testPredIdx1:      UInt = UInt(TestPredIdx1Width.W)
   val testPredTag1:      UInt = UInt(TestPredTag1Width.W)
-  val testPredIdx2:      UInt = UInt(TestPredIdx2Width.W)
-  val testPredTag2:      UInt = UInt(TestPredTag2Width.W)
+  // val testPredIdx2:      UInt = UInt(TestPredIdx2Width.W)
+  // val testPredTag2:      UInt = UInt(TestPredTag2Width.W)
   val testPredStartAddr: UInt = UInt(VAddrBits.W)
 //  val testFoldedPathHist: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
 

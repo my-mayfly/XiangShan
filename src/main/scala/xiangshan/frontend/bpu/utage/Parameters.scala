@@ -22,15 +22,16 @@ import xiangshan.frontend.bpu.TageTableInfo
 
 case class MicroTageParameters(
     TableInfos: Seq[MicroTageInfo] = Seq(
-      new MicroTageInfo(128, 6, 6, 15),
-      new MicroTageInfo(64, 16, 8, 18),
-      new MicroTageInfo(64, 32, 16, 24)
+      new MicroTageInfo(512, 6, 6, 6),
+      // new MicroTageInfo(64, 16, 8, 18),
+      new MicroTageInfo(512, 24, 10, 20)
+      // new MicroTageInfo(128, 32, 16, 24)
     ),
     MaxNumWays:    Int = 1,
     TakenCtrWidth: Int = 3,
     TagWidth:      Int = 13,
-    NumTables:     Int = 3,
-    TickWidth:     Int = 3
+    NumTables:     Int = 2,
+    TickWidth:     Int = 7
 ) {
   require(MaxNumWays == 1 || MaxNumWays == 2, "MaxNumWays must be either 1 or 2")
 }
@@ -44,13 +45,13 @@ trait HasMicroTageParameters extends HasBpuParameters {
   def NumTables:       Int                 = utageParameters.NumTables
   def TickWidth:       Int                 = utageParameters.TickWidth
 
-  def TableNumWays:      Seq[Int] = Seq(2, 1, 1)
+  def TableNumWays:      Seq[Int] = Seq(1, 1)
   def TestPredIdx0Width: Int      = log2Ceil(TableInfos(0).NumSets)
   def TestPredTag0Width: Int      = TableInfos(0).TagWidth
   def TestPredIdx1Width: Int      = log2Ceil(TableInfos(1).NumSets)
   def TestPredTag1Width: Int      = TableInfos(1).TagWidth
-  def TestPredIdx2Width: Int      = log2Ceil(TableInfos(2).NumSets)
-  def TestPredTag2Width: Int      = TableInfos(2).TagWidth
+  // def TestPredIdx2Width: Int      = log2Ceil(TableInfos(2).NumSets)
+  // def TestPredTag2Width: Int      = TableInfos(2).TagWidth
   // abtb can only be fast-trained, we don't have continous predict block on resolve
   def EnableFastTrain: Boolean = false
 

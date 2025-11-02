@@ -348,7 +348,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   io.toFtq.s3FtqPtr := s3_ftqPtr
 
   // utage meta
-  private val s1_utageMeta = RegEnable(utage.io.prediction.bits, s0_fire)
+  private val s1_utageMeta = RegEnable(utage.io.prediction.meta.bits, s0_fire)
   private val s2_utageMeta = RegEnable(s1_utageMeta, s1_fire)
   private val s3_utageMeta = RegEnable(s2_utageMeta, s2_fire)
 
