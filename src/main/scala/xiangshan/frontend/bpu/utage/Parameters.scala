@@ -22,7 +22,7 @@ import xiangshan.frontend.bpu.TageTableInfo
 
 case class MicroTageParameters(
     TableInfos: Seq[MicroTageInfo] = Seq(
-      new MicroTageInfo(512, 6, 6, 6),
+      new MicroTageInfo(512, 6, 6, 15),
       // new MicroTageInfo(64, 16, 8, 18),
       new MicroTageInfo(512, 24, 10, 20)
       // new MicroTageInfo(128, 32, 16, 24)
@@ -69,11 +69,3 @@ trait HasMicroTageParameters extends HasBpuParameters {
   )
   def PCTagHashBitsDefault: Seq[Int] = Seq(1, 0)
 }
-
-// sealed trait TAGEHistoryType
-// object TAGEHistoryType {
-//   case object Short   extends TAGEHistoryType
-//   case object Medium  extends TAGEHistoryType
-//   case object Long    extends TAGEHistoryType
-//   case object Unknown extends TAGEHistoryType
-// }

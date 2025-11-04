@@ -63,8 +63,18 @@ class MicroBaseTable(
   private val readEntry = Mux1H(PriorityEncoderOH(realTakenVec), readEntryVec)
   private val hitTaken  = realTakenVec.orR
 
-  io.resp.taken       := false.B // hitTaken
-  io.resp.cfiPosition := 0.U(CfiPositionWidth.W) // readEntry.cfiPosition
+  private val testRealTakenVec = RegInit(0.U(32.W))
+  private val testRealReadIdx  = RegInit(0.U(log2Ceil(numSets).W))
+  private val testReadEntryVec = RegInit(0.U.asTypeOf(Vec(32, new MicroBaseEntry)))
+  testRealTakenVec  := realTakenVec
+  testRealReadIdx   := s0_idx
+  testReadEntryVec  := readEntryVec
+  dontTouch(testRealTakenVec)
+  dontTouch(testRealReadIdx)
+  dontTouch(testReadEntryVec)
+
+  io.resp.taken       := hitTaken
+  io.resp.cfiPosition := readEntry.cfiPosition
 
   // update
   private val trainIdx = (io.update.bits.startPc.toUInt)(log2Ceil(numSets) + 6 - 1, 6)
