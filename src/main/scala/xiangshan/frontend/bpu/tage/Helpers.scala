@@ -34,12 +34,24 @@ trait Helpers extends HasTageParameters with HasXSParameter with RotateHelper wi
 
   def getSetIndex(pc: PrunedAddr, hist: UInt, numSets: Int): UInt = {
     val setIdxWidth = log2Ceil(numSets / NumBanks)
+    require(hist.getWidth == setIdxWidth)
     pc(setIdxWidth - 1 + BankIdxWidth + FetchBlockSizeWidth, BankIdxWidth + FetchBlockSizeWidth) ^ hist
   }
 
-  def getTag(pc: PrunedAddr, hist1: UInt, hist2: UInt): UInt =
-    pc(TagWidth - 1 + FetchBlockSizeWidth, FetchBlockSizeWidth) ^ hist1 ^ hist2
+  def getTag(pc: PrunedAddr, hist1: UInt, hist2: UInt): UInt = {
+    require(hist1.getWidth == TagWidth)
+    require(hist2.getWidth == (TagWidth - 1))
+    pc(TagWidth - 1) ^ hist1 ^ Cat(hist2, 0.U(1.W))
+  }
 
   def getBankIndex(pc: PrunedAddr): UInt =
     pc(BankIdxWidth - 1 + FetchBlockSizeWidth, FetchBlockSizeWidth)
+
+  def getLongestHistTableOH(hitTableMask: Seq[Bool]): Seq[Bool] =
+    PriorityEncoderOH(hitTableMask.reverse).reverse
+
+  def getUseAltIndex(pc: PrunedAddr): UInt = {
+    val useAltIdxWidth = log2Ceil(NumUseAltCtrs)
+    pc(useAltIdxWidth - 1 + instOffsetBits, instOffsetBits)
+  }
 }
