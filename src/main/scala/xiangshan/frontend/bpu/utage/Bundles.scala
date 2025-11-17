@@ -23,6 +23,7 @@ import xiangshan.frontend.bpu.SaturateCounter
 class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
   val taken:       Bool                 = Bool()
   val cfiPosition: UInt                 = UInt(CfiPositionWidth.W)
+  val histHit:     Bool                 = Bool()
   val meta:        Valid[MicroTageMeta] = Valid(new MicroTageMeta)
 }
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
@@ -34,6 +35,9 @@ class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
   val hitTakenCtr: SaturateCounter = new SaturateCounter(TakenCtrWidth)
   // The useful value of the table selected for the final prediction.
   val hitUseful: SaturateCounter = new SaturateCounter(UsefulWidth)
+  val baseValid:  Bool          = Bool()
+  val baseTaken:  Bool          = Bool()
+  val baseCfiPosition:  UInt    = UInt(CfiPositionWidth.W)
 
   // only for test and debug
   val testPredIdx0:      UInt = UInt(TestPredIdx0Width.W)

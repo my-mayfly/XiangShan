@@ -38,6 +38,7 @@ import xiangshan.frontend.bpu.sc.Sc
 import xiangshan.frontend.bpu.tage.Tage
 import xiangshan.frontend.bpu.ubtb.MicroBtb
 import xiangshan.frontend.bpu.utage.MicroTage
+import xiangshan.frontend.bpu.utage.MicroTageMeta
 
 class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   class DummyBpuIO extends Bundle {
@@ -139,7 +140,8 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   private val s3_abtbMeta = RegEnable(s2_abtbMeta, s2_fire)
 
   // utage meta
-  private val s1_utageMeta = utage.io.prediction.meta.bits
+  // private val s1_utageMeta = utage.io.prediction.meta.bits
+  private val s1_utageMeta = Wire(new MicroTageMeta)
   private val s2_utageMeta = RegEnable(s1_utageMeta, s1_fire)
   private val s3_utageMeta = RegEnable(s2_utageMeta, s2_fire)
 
@@ -307,6 +309,15 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
         (abtb.io.prediction.taken && (!s1_utageHit || notUseMicroTage))                -> abtb.io.prediction
       )
     )
+
+  private val baseBrValid = Mux(ubtb.io.prediction.taken, ubtb.io.prediction.attribute.isConditional, Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B))
+  private val baseBrTaken = baseBrValid
+  private val baseBrCfiPosition = Mux(ubtb.io.prediction.taken, ubtb.io.prediction.cfiPosition, Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U))
+
+  s1_utageMeta  := utage.io.prediction.meta.bits
+  s1_utageMeta.baseValid  := baseBrValid
+  s1_utageMeta.baseTaken  := baseBrTaken
+  s1_utageMeta.baseCfiPosition  := baseBrCfiPosition
 
   private val s2_mbtbResult    = mbtb.io.result
   private val s2_condTakenMask = tage.io.condTakenMask

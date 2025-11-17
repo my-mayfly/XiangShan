@@ -46,7 +46,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   /* *** submodules *** */
   private val tables = TableInfos.zipWithIndex.map {
     case (info, i) =>
-      val t = Module(new MicroTageTable(
+      val t = Module(new MicroTage1Table(
         numSets = info.NumSets,
         histLen = info.HistoryLength,
         tagLen = info.TagWidth,
@@ -78,8 +78,10 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val finalPredTaken       = MuxCase(false.B, takenCases)
   private val finalPredCfiPosition = MuxCase(0.U(CfiPositionWidth.W), cfiPositionCases)
   private val prediction           = Wire(new MicroTagePrediction)
-  prediction.taken                             := finalPredTaken && choseTableTakenCtr.isSaturatePositive
+  // prediction.taken                             := finalPredTaken && choseTableTakenCtr.isSaturatePositive
+  prediction.taken                             := finalPredTaken
   prediction.cfiPosition                       := finalPredCfiPosition
+  prediction.histHit                           := tables.map(_.resp.valid).reduce(_ || _)
   prediction.meta.valid                        := tables.map(_.resp.valid).reduce(_ || _)
   prediction.meta.bits.histTableHitMap         := tables.map(_.resp.valid)
   prediction.meta.bits.histTableTakenMap       := tables.map(_.resp.bits.taken)
@@ -87,12 +89,16 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   prediction.meta.bits.histTableCfiPositionVec := histTableCfiPositionVec
   prediction.meta.bits.hitUseful               := choseTableUseful
   prediction.meta.bits.hitTakenCtr             := choseTableTakenCtr
+  prediction.meta.bits.baseValid               := false.B
+  prediction.meta.bits.baseTaken               := false.B
+  prediction.meta.bits.baseCfiPosition         := 0.U
   io.prediction := RegEnable(prediction, 0.U.asTypeOf(new MicroTagePrediction), io.stageCtrl.s0_fire)
 
   // ------------ MicroTage is only concerned with conditional branches ---------- //
   private val t0_trainMeta               = io.fastTrain.get.bits.utageMeta
   private val t0_trainData               = io.fastTrain.get.bits.finalPrediction
   private val t0_trainValid              = io.fastTrain.get.valid
+  private val t0_trainOverride           = io.fastTrain.get.bits.hasOverride
   private val t0_histTableTakenMap       = t0_trainMeta.histTableTakenMap
   private val t0_histTableHitMap         = t0_trainMeta.histTableHitMap
   private val t0_histTableCfipositionVec = t0_trainMeta.histTableCfiPositionVec
@@ -104,20 +110,27 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val t0_predCfiPosition = MuxCase(0.U(CfiPositionWidth.W), t0_cfiPositionCases.reverse)
   private val t0_predHit         = t0_trainMeta.histTableHitMap.reduce(_ || _)
 
+  private val t0_baseTaken       = t0_trainMeta.baseValid && t0_trainMeta.baseTaken
+  private val t0_baseCfiPosition = t0_trainMeta.baseCfiPosition
+
+  private val t0_finalPredTaken       = Mux(t0_predHit, t0_predTaken, t0_baseTaken)
+  private val t0_finalPredCfiPosition = Mux(t0_predHit, t0_predCfiPosition, t0_baseCfiPosition)
+
   private val t0_histHitMisPred = t0_predHit && ((!t0_trainData.attribute.isConditional && t0_predTaken) ||
     (t0_trainData.attribute.isConditional && ((t0_predTaken =/= t0_trainData.taken) || (t0_predCfiPosition =/= t0_trainData.cfiPosition))))
+  XSPerfAccumulate("Incorrectly_hit_another_predicted_block", t0_predHit && !t0_trainData.attribute.isConditional && t0_trainValid)
   private val t0_histMissHitMisPred =
     !t0_predHit && t0_trainData.attribute.isConditional && t0_trainData.taken && io.fastTrain.get.bits.hasOverride
 
   private val t0_misPred             = t0_histHitMisPred || t0_histMissHitMisPred
   private val t0_histTableNeedAlloc  = t0_misPred && t0_trainValid
   private val t0_histTableNeedUpdate = t0_predHit && t0_trainValid
-  private val t0_updateTaken = t0_predTaken ^ t0_histHitMisPred // TODO: Perhaps more fine-grained operations are needed
-  private val t0_updateCfiposition = t0_predCfiPosition
+  private val t0_updateTaken       = (t0_predCfiPosition === t0_trainData.cfiPosition) && t0_trainData.taken
+  private val t0_updateCfiPosition = t0_predCfiPosition
   private val t0_allocTaken        = t0_trainData.attribute.isConditional && t0_trainData.taken
-  private val t0_allocCfiPosition =
+  private val t0_allocCfiPosition  =
     Mux(t0_trainData.attribute.isConditional, t0_trainData.cfiPosition, t0_predCfiPosition)
-
+  
   private val t0_providerMask      = PriorityEncoderOH(t0_trainMeta.histTableHitMap.reverse).reverse
   private val t0_histTableNoUseful = t0_trainMeta.histTableUsefulVec.map(useful => useful === 0.U).asUInt
   private val t0_fastAllocMask     = t0_providerMask.asUInt & t0_histTableNoUseful
@@ -134,42 +147,22 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     tickCounter := tickCounter + 1.U
   }
 
-// The training logic consists of two operations: updating entries and
-// allocating new ones.
-//
-// Update behavior:
-// - If train_position < table_position: entry remains unchanged.
-// - If train_position === table_position: value is adjusted based on
-//   prediction outcome (increment or decrement).
-// - If train_position > table_position: entry remains unchanged.
-//
-// Allocation behavior (triggered only on misprediction):
-// - A new entry is allocated to a higher-level table.
-// - Target the lowest such table with an available slot (useful == 0).
-// - If no slot is available, allocation fails.
-//
-// Update rule: To reduce noise, updates occur only when positions match.
-//              The direction (inc/dec) is determined by the training result.
-//
-// Allocation rule: The selected entry replaces an available slot.
-//                  If no free slot exists, allocation fails.
-//                  Each failure is recorded; after 8 consecutive failures,
-//                  all 'useful' counters are reset to 0.
+  //------------------------ Base Table 一致性判断 ---------------------------
+  private val baseEQNotMatch = (t0_baseCfiPosition === t0_predCfiPosition) && (t0_baseTaken ^ t0_predTaken)
+  private val baseLTNotMatch = (t0_baseCfiPosition < t0_predCfiPosition) && ((!t0_baseTaken && t0_predTaken) || t0_baseTaken)
+  private val baseGTNotMatch = (t0_baseCfiPosition > t0_predCfiPosition) && ((!t0_baseTaken && t0_predTaken) || (t0_baseTaken && t0_predTaken))
 
-  private val t0_allowAlloc = true.B
   tables.zipWithIndex.foreach { case (t, i) =>
-    t.update.valid := ((t0_allocMask(i) && t0_histTableNeedAlloc && t0_allowAlloc) ||
-      (t0_providerMask(i) && t0_histTableNeedUpdate)) && t0_trainValid
+    t.update.valid  := ((t0_allocMask(i) && t0_histTableNeedAlloc) || (t0_providerMask(i) && t0_histTableNeedUpdate)) && t0_trainValid
     t.update.bits.startPc := io.fastTrain.get.bits.startVAddr
-    t.update.bits.cfiPosition := Mux(
-      t0_allocMask(i) && t0_histTableNeedAlloc,
-      t0_allocCfiPosition,
-      t0_updateCfiposition
-    )
-    t.update.bits.alloc                  := t0_allocMask(i) && t0_histTableNeedAlloc
-    t.update.bits.allocTaken             := t0_allocTaken
-    t.update.bits.correct                := !t0_histHitMisPred
-    t.update.bits.taken                  := t0_updateTaken
+    t.update.bits.allocValid  := (t0_allocMask(i) && t0_histTableNeedAlloc)
+    t.update.bits.updateValid := (t0_providerMask(i) && t0_histTableNeedUpdate) && (t0_predCfiPosition <= t0_trainData.cfiPosition)
+    t.update.bits.usefulValid := (t0_providerMask(i) && t0_histTableNeedUpdate) && (t0_histHitMisPred || ((baseEQNotMatch || baseLTNotMatch || baseGTNotMatch) && (t0_predCfiPosition <= t0_trainData.cfiPosition)))
+    t.update.bits.allocTaken       := t0_allocTaken
+    t.update.bits.allocCfiPosition := t0_allocCfiPosition
+    t.update.bits.updateTaken       := t0_updateTaken
+    t.update.bits.updateCfiPosition := t0_updateCfiPosition
+    t.update.bits.usefulCorrect     := !t0_histHitMisPred
     t.update.bits.foldedPathHistForTrain := io.foldedPathHistForTrain
     t.update.bits.oldTakenCtr            := t0_trainMeta.hitTakenCtr
     t.update.bits.oldUseful              := t0_trainMeta.hitUseful
