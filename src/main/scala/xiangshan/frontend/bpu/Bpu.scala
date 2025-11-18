@@ -276,6 +276,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   // otherwise, use fall-through prediction
   // TODO: maybe need compare position？
 
+  // When microTAGE participates in prediction, it has the highest priority in stage S1.
   private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
   s1_prediction :=
     MuxCase(
