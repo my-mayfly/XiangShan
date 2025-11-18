@@ -38,6 +38,7 @@ import xiangshan.frontend.bpu.sc.Sc
 import xiangshan.frontend.bpu.tage.Tage
 import xiangshan.frontend.bpu.ubtb.MicroBtb
 import xiangshan.frontend.bpu.utage.MicroTage
+import xiangshan.frontend.bpu.utage.MicroTageMeta
 
 class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   class DummyBpuIO extends Bundle {
@@ -139,7 +140,8 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   private val s3_abtbMeta = RegEnable(s2_abtbMeta, s2_fire)
 
   // utage meta
-  private val s1_utageMeta = utage.io.prediction.meta.bits
+  // private val s1_utageMeta = utage.io.prediction.meta.bits
+  private val s1_utageMeta = Wire(new MicroTageMeta)
   private val s2_utageMeta = RegEnable(s1_utageMeta, s1_fire)
   private val s3_utageMeta = RegEnable(s2_utageMeta, s2_fire)
 
@@ -193,6 +195,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   abtb.io.overrideValid       := s3_override
   abtb.io.previousVAddr.valid := s4_valid
   abtb.io.previousVAddr.bits  := s4_pc
+  abtb.io.microTagePred       := utage.io.prediction
 
   // utage
   utage.io.foldedPathHist         := phr.io.s0_foldedPhr
@@ -273,40 +276,30 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   // otherwise, use fall-through prediction
   // TODO: maybe need compare position？
 
-  private val s1_btbCfiPosition = Seq(ubtb.io.prediction.cfiPosition) ++ abtb.io.readEntryVec.map(_.position)
-  private val s1_btbHitMask     = Seq(ubtb.io.prediction.taken) ++ abtb.io.hitMask
-  private val s1_utageHitMap = s1_btbCfiPosition.zip(s1_btbHitMask).map { case (position, hit) =>
-    (position === utage.io.prediction.cfiPosition) && hit
-  }
-  private val s1_abtbPredictions = abtb.io.readEntryVec.zipWithIndex.map { case (entry, i) =>
-    // val target = getFullTarget(s1_pc, entry.targetLowerBits, entry.targetCarry)
-    val prediction = Wire(new Prediction)
-    prediction.taken       := true.B
-    prediction.target      := abtb.io.readTargetVec(i)
-    prediction.attribute   := entry.attribute
-    prediction.cfiPosition := entry.position
-    prediction
-  }
-  private val s1_btbPredictios = Seq(ubtb.io.prediction) ++ s1_abtbPredictions
-  // private val s1_btbTargets = s1_ubtbTargets ++ s1_abtbTargets
-  private val s1_selectOH         = PriorityEncoderOH(s1_utageHitMap)
-  private val s1_hybridPrediction = Mux1H(s1_utageHitMap, s1_btbPredictios)
-  private val s1_utageHit         = s1_utageHitMap.reduce(_ || _) && utage.io.prediction.taken
-  private val notUseMicroTage =
-    (ubtb.io.prediction.taken && !ubtb.io.prediction.attribute.isConditional && (ubtb.io.prediction.cfiPosition < utage.io.prediction.cfiPosition)) ||
-      (abtb.io.prediction.taken && !abtb.io.prediction.attribute.isConditional && (abtb.io.prediction.cfiPosition < utage.io.prediction.cfiPosition))
-  private val notUseUbtb =
-    abtb.io.prediction.taken && !abtb.io.prediction.attribute.isConditional && (abtb.io.prediction.cfiPosition < ubtb.io.prediction.cfiPosition)
-
+  private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
   s1_prediction :=
     MuxCase(
       fallThrough.io.prediction,
       Seq(
-        (utage.io.prediction.taken && s1_utageHit && !notUseMicroTage)                 -> s1_hybridPrediction,
-        (ubtb.io.prediction.taken && (!s1_utageHit || notUseMicroTage) && !notUseUbtb) -> ubtb.io.prediction,
-        (abtb.io.prediction.taken && (!s1_utageHit || notUseMicroTage))                -> abtb.io.prediction
+        s1_realUbtbTaken  -> ubtb.io.prediction,
+        abtb.io.prediction.taken -> abtb.io.prediction
       )
     )
+
+  // ---------- Base Table Info for microTAGE Meta ----------
+  private val baseBrTaken = Mux(
+    ubtb.io.prediction.taken,
+    ubtb.io.prediction.attribute.isConditional,
+    Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
+  )
+  private val baseBrCfiPosition = Mux(ubtb.io.prediction.taken,
+   ubtb.io.prediction.cfiPosition,
+   Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
+  )
+
+  s1_utageMeta  := utage.io.meta.bits
+  s1_utageMeta.baseTaken        := baseBrTaken
+  s1_utageMeta.baseCfiPosition  := baseBrCfiPosition
 
   private val s2_mbtbResult    = mbtb.io.result
   private val s2_condTakenMask = tage.io.condTakenMask

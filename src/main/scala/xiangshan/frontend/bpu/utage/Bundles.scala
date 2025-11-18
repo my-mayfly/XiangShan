@@ -20,20 +20,23 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xiangshan.frontend.bpu.SaturateCounter
 
+// class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
+//   val result:      Valid[MicroTageResult] = Valid(new MicroTageResult)
+//   val meta:        Valid[MicroTageMeta]   = Valid(new MicroTageMeta)
+// }
+
 class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
   val taken:       Bool                 = Bool()
   val cfiPosition: UInt                 = UInt(CfiPositionWidth.W)
-  val meta:        Valid[MicroTageMeta] = Valid(new MicroTageMeta)
 }
+
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
   val histTableHitMap:         Vec[Bool] = Vec(NumTables, Bool())
   val histTableTakenMap:       Vec[Bool] = Vec(NumTables, Bool())
   val histTableUsefulVec:      Vec[UInt] = Vec(NumTables, UInt(UsefulWidth.W))
   val histTableCfiPositionVec: Vec[UInt] = Vec(NumTables, UInt(CfiPositionWidth.W))
-  // The cfiPosition of the table selected for the final prediction.
-  val hitTakenCtr: SaturateCounter = new SaturateCounter(TakenCtrWidth)
-  // The useful value of the table selected for the final prediction.
-  val hitUseful: SaturateCounter = new SaturateCounter(UsefulWidth)
+  val baseTaken:               Bool      = Bool()
+  val baseCfiPosition:         UInt      = UInt(CfiPositionWidth.W)
 
   // only for test and debug
   val testPredIdx0:      UInt = UInt(TestPredIdx0Width.W)

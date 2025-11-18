@@ -29,7 +29,6 @@ case class MicroTageParameters(
       // new MicroTageInfo(128, 32, 16, 24)
     ),
     TakenCtrWidth: Int = 3,
-    TagWidth:      Int = 13,
     NumTables:     Int = 2,
     TickWidth:     Int = 5,
     UsefulWidth:   Int = 2,
@@ -40,7 +39,6 @@ trait HasMicroTageParameters extends HasBpuParameters {
   val utageParameters: MicroTageParameters = MicroTageParameters()
   def TableInfos:      Seq[MicroTageInfo]  = utageParameters.TableInfos
   def TakenCtrWidth:   Int                 = utageParameters.TakenCtrWidth
-  def TagWidth:        Int                 = utageParameters.TagWidth
   def NumTables:       Int                 = utageParameters.NumTables
   def TickWidth:       Int                 = utageParameters.TickWidth
   def UsefulWidth:     Int                 = utageParameters.UsefulWidth
