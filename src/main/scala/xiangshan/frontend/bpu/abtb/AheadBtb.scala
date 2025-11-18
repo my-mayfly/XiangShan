@@ -33,14 +33,14 @@ import xiangshan.frontend.bpu.utage.MicroTagePrediction
  */
 class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   class AheadBtbIO(implicit p: Parameters) extends BasePredictorIO with HasFastTrainIO {
-    val redirectValid:    Bool               = Input(Bool())
-    val overrideValid:    Bool               = Input(Bool())
-    val previousVAddr:    Valid[PrunedAddr]  = Flipped(Valid(PrunedAddr(VAddrBits)))
-    val microTagePred:    Valid[MicroTagePrediction]  = Input(Valid(new MicroTagePrediction))
-    val prediction:       Prediction         = Output(new Prediction)
-    val useMicroTage:     Bool               = Output(Bool())
-    val meta:             AheadBtbMeta       = Output(new AheadBtbMeta)
-    val debug_startVAddr: PrunedAddr         = Output(PrunedAddr(VAddrBits))
+    val redirectValid:    Bool                       = Input(Bool())
+    val overrideValid:    Bool                       = Input(Bool())
+    val previousVAddr:    Valid[PrunedAddr]          = Flipped(Valid(PrunedAddr(VAddrBits)))
+    val microTagePred:    Valid[MicroTagePrediction] = Input(Valid(new MicroTagePrediction))
+    val prediction:       Prediction                 = Output(new Prediction)
+    val useMicroTage:     Bool                       = Output(Bool())
+    val meta:             AheadBtbMeta               = Output(new AheadBtbMeta)
+    val debug_startVAddr: PrunedAddr                 = Output(PrunedAddr(VAddrBits))
   }
   val io: AheadBtbIO = IO(new AheadBtbIO)
 
@@ -157,11 +157,11 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s2_realEntries = s2_entries // TODO
   private val s2_hitMask     = s2_entries.map(entry => entry.valid && entry.tag === s2_tag)
   private val s2_hit         = s2_hitMask.reduce(_ || _)
-  private val s2_takenMask   = VecInit(s2_hitMask.zip(s2_ctrResult).map { case (hit, taken) => hit && taken})
+  private val s2_takenMask   = VecInit(s2_hitMask.zip(s2_ctrResult).map { case (hit, taken) => hit && taken })
   private val s2_taken       = s2_takenMask.reduce(_ || _)
 
-  private val s2_positions      = VecInit(s2_realEntries.map(_.position))
-  private val s2_compareMatrix  = CompareMatrix(s2_positions)
+  private val s2_positions         = VecInit(s2_realEntries.map(_.position))
+  private val s2_compareMatrix     = CompareMatrix(s2_positions)
   private val s2_firstTakenEntryOH = s2_compareMatrix.getLeastElementOH(s2_takenMask)
   private val s2_firstTakenEntry   = Mux1H(s2_firstTakenEntryOH, s2_realEntries)
 
@@ -171,21 +171,21 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s2_firstTakenTarget =
     getFullTarget(s2_startVAddr, s2_firstTakenEntry.targetLowerBits, s2_firstTakenEntry.targetCarry)
 
-  private val microTagePred     = io.microTagePred
-  private val s2_jumpMask       = s2_realEntries.zip(s2_hitMask).map{
+  private val microTagePred = io.microTagePred
+  private val s2_jumpMask = s2_realEntries.zip(s2_hitMask).map {
     case (entry, hit) => (entry.attribute.isDirect || entry.attribute.isIndirect) && hit
   }
-  private val s2_microTageHit  = s2_realEntries.zip(s2_hitMask).map{
+  private val s2_microTageHit = s2_realEntries.zip(s2_hitMask).map {
     case (entry, hit) => hit && (entry.position === microTagePred.bits.cfiPosition)
   }
-  private val useMicroTage     = s2_microTageHit.reduce(_ || _) && microTagePred.valid && s2_valid
+  private val useMicroTage = s2_microTageHit.reduce(_ || _) && microTagePred.valid && s2_valid
   // When microTAGE makes a prediction, it must be compared against the position of the jump branch instruction.
-  private val s2_microTageTakenMask = VecInit(s2_jumpMask.zip(s2_microTageHit).map{
+  private val s2_microTageTakenMask = VecInit(s2_jumpMask.zip(s2_microTageHit).map {
     case (jump, microTageHit) => jump || (microTageHit && microTagePred.bits.taken)
   })
   private val microTageTakenOH = s2_compareMatrix.getLeastElementOH(s2_microTageTakenMask)
   private val microTageEntry   = Mux1H(microTageTakenOH, s2_realEntries)
-  private val microTageTarget  =
+  private val microTageTarget =
     getFullTarget(s2_startVAddr, microTageEntry.targetLowerBits, microTageEntry.targetCarry)
 
   // Only use the microTage result when microTage is valid and a hit occurs.

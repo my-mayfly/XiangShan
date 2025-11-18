@@ -20,14 +20,9 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xiangshan.frontend.bpu.SaturateCounter
 
-// class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
-//   val result:      Valid[MicroTageResult] = Valid(new MicroTageResult)
-//   val meta:        Valid[MicroTageMeta]   = Valid(new MicroTageMeta)
-// }
-
 class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
-  val taken:       Bool                 = Bool()
-  val cfiPosition: UInt                 = UInt(CfiPositionWidth.W)
+  val taken:       Bool = Bool()
+  val cfiPosition: UInt = UInt(CfiPositionWidth.W)
 }
 
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {

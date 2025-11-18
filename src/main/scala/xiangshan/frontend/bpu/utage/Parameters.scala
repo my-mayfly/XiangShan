@@ -36,7 +36,7 @@ case class MicroTageParameters(
 ) {}
 
 trait HasMicroTageParameters extends HasBpuParameters {
-  val utageParameters: MicroTageParameters = MicroTageParameters()
+  val utageParameters: MicroTageParameters = bpuParameters.utageParameters
   def TableInfos:      Seq[MicroTageInfo]  = utageParameters.TableInfos
   def TakenCtrWidth:   Int                 = utageParameters.TakenCtrWidth
   def NumTables:       Int                 = utageParameters.NumTables
@@ -51,6 +51,7 @@ trait HasMicroTageParameters extends HasBpuParameters {
   // utage can only be fast-trained, we don't have continous predict block on resolve
   def EnableFastTrain: Boolean = true
 
+  // Hash PC into tag to reduce aliasing (at cost of capacity).
   def PCTagHashBitsForShortHistory:  Seq[Int] = Seq(15, 13, 11, 9, 8, 7, 5, 3, 1)
   def PCTagHashBitsForMediumHistory: Seq[Int] = Seq(16, 15, 13, 11, 10, 8, 6, 4, 2, 1)
   def PCTagHashXorPairsForLongHistory: Seq[(Int, Int)] = Seq(

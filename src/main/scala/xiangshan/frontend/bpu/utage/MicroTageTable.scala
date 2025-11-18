@@ -46,21 +46,21 @@ class MicroTageTable(
       val hitUseful:   SaturateCounter = new SaturateCounter(UsefulWidth)
     }
     class MicroTageUpdate extends Bundle {
-      val startPc:  PrunedAddr  = new PrunedAddr(VAddrBits)
-      val allocValid:   Bool    = Bool()
-      val updateValid:  Bool    = Bool()
-      val usefulValid:  Bool    = Bool()
-      val allocTaken:   Bool    = Bool()
-      val allocCfiPosition:     UInt = UInt(CfiPositionWidth.W)
-      val updateTaken:          Bool = Bool()
-      val updateCfiPosition:    UInt = UInt(CfiPositionWidth.W)
-      val usefulCorrect:        Bool = Bool()
+      val startPc:                PrunedAddr            = new PrunedAddr(VAddrBits)
+      val allocValid:             Bool                  = Bool()
+      val updateValid:            Bool                  = Bool()
+      val usefulValid:            Bool                  = Bool()
+      val allocTaken:             Bool                  = Bool()
+      val allocCfiPosition:       UInt                  = UInt(CfiPositionWidth.W)
+      val updateTaken:            Bool                  = Bool()
+      val updateCfiPosition:      UInt                  = UInt(CfiPositionWidth.W)
+      val usefulCorrect:          Bool                  = Bool()
       val foldedPathHistForTrain: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
     }
-    val req:           MicroTageReq           = Input(new MicroTageReq)
-    val resp:          Valid[MicroTageResp]   = Output(Valid(new MicroTageResp))
-    val update:        Valid[MicroTageUpdate] = Input(Valid(new MicroTageUpdate))
-    val usefulReset:   Bool                   = Input(Bool())
+    val req:         MicroTageReq           = Input(new MicroTageReq)
+    val resp:        Valid[MicroTageResp]   = Output(Valid(new MicroTageResp))
+    val update:      Valid[MicroTageUpdate] = Input(Valid(new MicroTageUpdate))
+    val usefulReset: Bool                   = Input(Bool())
   }
   class MicroTageEntry() extends MicroTageBundle {
     val valid:       Bool            = Bool()
@@ -136,7 +136,7 @@ class MicroTageTable(
 
   // Write back updated entry on valid update
   when(io.update.valid && (io.update.bits.allocValid || io.update.bits.updateValid)) {
-    entries(trainIdx)       := updateEntry
+    entries(trainIdx) := updateEntry
   }
 
   when(io.update.valid && (io.update.bits.usefulValid || io.update.bits.allocValid)) {

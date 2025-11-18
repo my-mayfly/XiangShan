@@ -35,10 +35,10 @@ import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
  */
 class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageParameters with Helpers {
   class MicroTageIO(implicit p: Parameters) extends BasePredictorIO with HasFastTrainIO {
-    val foldedPathHist:         PhrAllFoldedHistories = Input(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val foldedPathHistForTrain: PhrAllFoldedHistories = Input(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val prediction:      Valid[MicroTagePrediction]   = Output(Valid(new MicroTagePrediction))
-    val meta:            Valid[MicroTageMeta]         = Output(Valid(new MicroTageMeta))
+    val foldedPathHist:         PhrAllFoldedHistories      = Input(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val foldedPathHistForTrain: PhrAllFoldedHistories      = Input(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val prediction:             Valid[MicroTagePrediction] = Output(Valid(new MicroTagePrediction))
+    val meta:                   Valid[MicroTageMeta]       = Output(Valid(new MicroTageMeta))
   }
   val io: MicroTageIO = IO(new MicroTageIO)
   io.resetDone   := true.B
@@ -80,24 +80,20 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val prediction           = Wire(Valid(new MicroTagePrediction))
   private val predMeta             = Wire(Valid(new MicroTageMeta))
 
-  // prediction.meta.valid                        := tables.map(_.resp.valid).reduce(_ || _)
-  // prediction.meta.histHit                      := tables.map(_.resp.valid).reduce(_ || _)
-  // prediction.meta.bits.histTableHitMap         := tables.map(_.resp.valid)
-  // prediction.meta.bits.histTableTakenMap       := tables.map(_.resp.bits.taken)
-  // prediction.meta.bits.histTableUsefulVec      := histTableUsefulVec
-  // prediction.meta.bits.histTableCfiPositionVec := histTableCfiPositionVec
-  // prediction.meta.bits.baseTaken               := false.B // no use, only for placeholder.
-  // prediction.meta.bits.baseCfiPosition         := 0.U     // no use, only for placeholder.
-  // io.prediction := RegEnable(prediction, 0.U.asTypeOf(new MicroTagePrediction), io.stageCtrl.s0_fire)
-
-  prediction.valid  := finalPredTaken && choseTableTakenCtr.isSaturatePositive
+// As training stabilizes, counters should approach saturation.
+// Using strong saturation reduces early "overconfident" predictions before maturity,
+// but it's a double-edged sword: with limited capacity, entries may be evicted
+// before reaching saturation—making their unsaturated states potentially useless.
+// This trade-off needs empirical validation.
+  prediction.valid := histTableHitMap.reduce(_ || _) &&
+   (choseTableTakenCtr.isSaturatePositive || choseTableTakenCtr.isSaturateNegative)
   prediction.bits.taken       := finalPredTaken && choseTableTakenCtr.isSaturatePositive
   prediction.bits.cfiPosition := finalPredCfiPosition
 
-  predMeta.valid  := tables.map(_.resp.valid).reduce(_ || _)
-  predMeta.bits.histTableHitMap   := tables.map(_.resp.valid)
-  predMeta.bits.histTableTakenMap := tables.map(_.resp.bits.taken)
-  predMeta.bits.histTableUsefulVec := histTableUsefulVec
+  predMeta.valid                        := tables.map(_.resp.valid).reduce(_ || _)
+  predMeta.bits.histTableHitMap         := tables.map(_.resp.valid)
+  predMeta.bits.histTableTakenMap       := tables.map(_.resp.bits.taken)
+  predMeta.bits.histTableUsefulVec      := histTableUsefulVec
   predMeta.bits.histTableCfiPositionVec := histTableCfiPositionVec
   predMeta.bits.baseTaken               := false.B // no use, only for placeholder.
   predMeta.bits.baseCfiPosition         := 0.U     // no use, only for placeholder.
@@ -125,10 +121,10 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
 
   private val t0_histHitMisPred = t0_predHit && (
     (!t0_trainData.attribute.isConditional && t0_predTaken) ||
-    (t0_trainData.attribute.isConditional && (
-      (t0_predTaken =/= t0_trainData.taken) ||
-      (t0_predCfiPosition =/= t0_trainData.cfiPosition)
-    ))
+      (t0_trainData.attribute.isConditional && (
+        (t0_predTaken =/= t0_trainData.taken) ||
+          (t0_predCfiPosition =/= t0_trainData.cfiPosition)
+      ))
   )
 
   private val t0_histMissHitMisPred =
@@ -137,9 +133,9 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val t0_misPred             = t0_histHitMisPred || t0_histMissHitMisPred
   private val t0_histTableNeedAlloc  = t0_misPred && t0_trainValid
   private val t0_histTableNeedUpdate = t0_predHit && t0_trainValid
-  private val t0_updateTaken       = (t0_predCfiPosition === t0_trainData.cfiPosition) && t0_trainData.taken
-  private val t0_updateCfiPosition = t0_predCfiPosition
-  private val t0_allocTaken        = t0_trainData.attribute.isConditional && t0_trainData.taken
+  private val t0_updateTaken         = (t0_predCfiPosition === t0_trainData.cfiPosition) && t0_trainData.taken
+  private val t0_updateCfiPosition   = t0_predCfiPosition
+  private val t0_allocTaken          = t0_trainData.attribute.isConditional && t0_trainData.taken
   private val t0_allocCfiPosition =
     Mux(t0_trainData.attribute.isConditional, t0_trainData.cfiPosition, t0_predCfiPosition)
 
@@ -165,27 +161,39 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val baseLTNotMatch =
     (t0_baseCfiPosition < t0_predCfiPosition) && ((!t0_baseTaken && t0_predTaken) || t0_baseTaken)
   private val baseGTNotMatch =
-     (t0_baseCfiPosition > t0_predCfiPosition) && ((!t0_baseTaken && t0_predTaken) || (t0_baseTaken && t0_predTaken))
+    (t0_baseCfiPosition > t0_predCfiPosition) && ((!t0_baseTaken && t0_predTaken) || (t0_baseTaken && t0_predTaken))
 
   private val fastTrainHasPredBr   = t0_predCfiPosition <= t0_trainData.cfiPosition
   private val baseNotMatchHistPred = baseEQNotMatch || baseLTNotMatch || baseGTNotMatch
+
+// Allocation policy:
+// - On misprediction, attempt to allocate.
+// - If the victim entry has useful == 0, replace it directly.
+
+// Update policy:
+// - Only update entries on hits that lie on the executed path.
+// - Entries not on the executed path are not updated (outcome unknown).
+
+// 'useful' counter update:
+// - Decrement on misprediction.
+// - Increment only if prediction is correct AND base table failed to predict correctly.
   tables.zipWithIndex.foreach { case (t, i) =>
-    t.update.valid  := t0_trainValid &&
+    t.update.valid := t0_trainValid &&
       ((t0_allocMask(i) && t0_histTableNeedAlloc) || (t0_providerMask(i) && t0_histTableNeedUpdate))
     t.update.bits.allocValid  := (t0_allocMask(i) && t0_histTableNeedAlloc)
     t.update.bits.updateValid := (t0_providerMask(i) && t0_histTableNeedUpdate) && fastTrainHasPredBr
     t.update.bits.usefulValid := (t0_providerMask(i) && t0_histTableNeedUpdate) &&
-     (t0_histHitMisPred || (baseNotMatchHistPred && fastTrainHasPredBr))
+      (t0_histHitMisPred || (baseNotMatchHistPred && fastTrainHasPredBr))
 
-    t.update.bits.startPc           := io.fastTrain.get.bits.startVAddr
-    t.update.bits.allocTaken        := t0_allocTaken
-    t.update.bits.allocCfiPosition  := t0_allocCfiPosition
-    t.update.bits.updateTaken       := t0_updateTaken
-    t.update.bits.updateCfiPosition := t0_updateCfiPosition
-    t.update.bits.usefulCorrect     := !t0_histHitMisPred
+    t.update.bits.startPc                := io.fastTrain.get.bits.startVAddr
+    t.update.bits.allocTaken             := t0_allocTaken
+    t.update.bits.allocCfiPosition       := t0_allocCfiPosition
+    t.update.bits.updateTaken            := t0_updateTaken
+    t.update.bits.updateCfiPosition      := t0_updateCfiPosition
+    t.update.bits.usefulCorrect          := !t0_histHitMisPred
     t.update.bits.foldedPathHistForTrain := io.foldedPathHistForTrain
-    // t.update.bits.oldTakenCtr            := t0_trainMeta.hitTakenCtr
-    // t.update.bits.oldUseful              := t0_trainMeta.hitUseful
+  // t.update.bits.oldTakenCtr            := t0_trainMeta.hitTakenCtr
+  // t.update.bits.oldUseful              := t0_trainMeta.hitUseful
   }
 
   // ==========================================================================
@@ -228,10 +236,10 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val (s0_idxTable0, s0_tagTable0) = computeHash(io.startVAddr.toUInt, io.foldedPathHist, 0)
   private val (s0_idxTable1, s0_tagTable1) = computeHash(io.startVAddr.toUInt, io.foldedPathHist, 1)
 
-  predMeta.bits.testPredIdx0 := s0_idxTable0
-  predMeta.bits.testPredTag0 := s0_tagTable0
-  predMeta.bits.testPredIdx1 := s0_idxTable1
-  predMeta.bits.testPredTag1 := s0_tagTable1
+  predMeta.bits.testPredIdx0      := s0_idxTable0
+  predMeta.bits.testPredTag0      := s0_tagTable0
+  predMeta.bits.testPredIdx1      := s0_idxTable1
+  predMeta.bits.testPredTag1      := s0_tagTable1
   predMeta.bits.testPredStartAddr := io.startVAddr.toUInt
 
   private val (trainIdx0, trainTag0) =
