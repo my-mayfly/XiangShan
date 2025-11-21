@@ -560,10 +560,14 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   XSPerfAccumulate("s1_use_ubtb", io.toFtq.prediction.fire && ubtb.io.prediction.taken)
   XSPerfAccumulate("s1_use_abtb", io.toFtq.prediction.fire && !ubtb.io.prediction.taken && abtb.io.prediction.taken)
   XSPerfAccumulate("s1_use_microTage", io.toFtq.prediction.fire && abtb.io.useMicroTage)
+  private val test_avoidOverride = !s3_override && s3_testOverride && s3_utageMeta.testUseMicroTage
+  private val test_causeOverride = s3_override && !s3_testOverride && s3_utageMeta.testUseMicroTage
+  dontTouch(test_avoidOverride)
+  dontTouch(test_causeOverride)
   XSPerfAccumulate("useMicroTage_avoidOverride", !s3_override && s3_testOverride)
   XSPerfAccumulate("useMicroTage_causeOverride", s3_override && !s3_testOverride)
-  XSPerfAccumulate("useMicroTage_avoidOverride1", !s3_override && s3_testOverride && s3_utageMeta.testUseMicroTage)
-  XSPerfAccumulate("useMicroTage_causeOverride1", s3_override && !s3_testOverride && s3_utageMeta.testUseMicroTage)
+  XSPerfAccumulate("useMicroTage_avoidOverride1", test_avoidOverride)
+  XSPerfAccumulate("useMicroTage_causeOverride1", test_causeOverride)
   XSPerfAccumulate("both_causeOverride", s3_override && s3_testOverride)
   XSPerfAccumulate("fromFtq_redirect", io.fromFtq.redirect.valid)
 
