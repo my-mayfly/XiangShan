@@ -85,9 +85,9 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
 // but it's a double-edged sword: with limited capacity, entries may be evicted
 // before reaching saturation—making their unsaturated states potentially useless.
 // This trade-off needs empirical validation.
-  // prediction.valid := histTableHitMap.reduce(_ || _) &&
-  //   (choseTableTakenCtr.isSaturatePositive || choseTableTakenCtr.isSaturateNegative)
-  prediction.valid            := false.B
+  prediction.valid := histTableHitMap.reduce(_ || _) &&
+    (choseTableTakenCtr.isSaturatePositive || choseTableTakenCtr.isSaturateNegative)
+  // prediction.valid            := false.B
   prediction.bits.taken       := finalPredTaken && choseTableTakenCtr.isSaturatePositive
   prediction.bits.cfiPosition := finalPredCfiPosition
 
@@ -98,6 +98,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   predMeta.bits.histTableCfiPositionVec := histTableCfiPositionVec
   predMeta.bits.baseTaken               := false.B // no use, only for placeholder.
   predMeta.bits.baseCfiPosition         := 0.U     // no use, only for placeholder.
+  predMeta.bits.testUseMicroTage        := false.B
+  predMeta.bits.testMismatchUbtb        := false.B
   io.prediction := RegEnable(prediction, 0.U.asTypeOf(Valid(new MicroTagePrediction)), io.stageCtrl.s0_fire)
   io.meta       := RegEnable(predMeta, 0.U.asTypeOf(Valid(new MicroTageMeta)), io.stageCtrl.s0_fire)
 
@@ -247,6 +249,20 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     computeHash(io.fastTrain.get.bits.startVAddr.toUInt, io.foldedPathHistForTrain, 0)
   private val (trainIdx1, trainTag1) =
     computeHash(io.fastTrain.get.bits.startVAddr.toUInt, io.foldedPathHistForTrain, 1)
+
+  XSPerfAccumulate(
+    "train_useMicroTage_and_override_fromFastTrain",
+    t0_trainValid && t0_trainMeta.testUseMicroTage && io.fastTrain.get.bits.hasOverride
+  )
+  XSPerfAccumulate("train_useMicroTage_fromFastTrain", t0_trainValid && t0_trainMeta.testUseMicroTage)
+  XSPerfAccumulate(
+    "train_useMicroTage_misMathUbtb_fromFastTrain",
+    t0_trainValid && t0_trainMeta.testUseMicroTage && t0_trainMeta.testMismatchUbtb
+  )
+  XSPerfAccumulate(
+    "train_useMicroTage_misMathUbtb_and_override_fromFastTrain",
+    t0_trainValid && t0_trainMeta.testUseMicroTage && t0_trainMeta.testMismatchUbtb && io.fastTrain.get.bits.hasOverride
+  )
 
   XSPerfAccumulate("train_needAlloc", t0_trainValid && t0_histTableNeedAlloc)
   XSPerfAccumulate("train_needUpdate", t0_trainValid && t0_histTableNeedUpdate)

@@ -294,6 +294,16 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
       )
     )
 
+  private val s1_testPrediction = Wire(new Prediction)
+  s1_testPrediction :=
+    MuxCase(
+      fallThrough.io.prediction,
+      Seq(
+        ubtb.io.prediction.taken      -> ubtb.io.prediction,
+        abtb.io.testPrediction.taken  -> abtb.io.testPrediction
+      )
+    )
+
   // ---------- Base Table Info for microTAGE Meta ----------
   private val baseBrTaken = Mux(
     ubtb.io.prediction.taken,
@@ -306,9 +316,12 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
   )
 
-  s1_utageMeta                 := utage.io.meta.bits
-  s1_utageMeta.baseTaken       := baseBrTaken
-  s1_utageMeta.baseCfiPosition := baseBrCfiPosition
+  s1_utageMeta                  := utage.io.meta.bits
+  s1_utageMeta.testMismatchUbtb := (ubtb.io.prediction.taken ^ abtb.io.prediction.taken) ||
+    (ubtb.io.prediction.cfiPosition =/= abtb.io.prediction.cfiPosition)
+  s1_utageMeta.testUseMicroTage := abtb.io.useMicroTage
+  s1_utageMeta.baseTaken        := baseBrTaken
+  s1_utageMeta.baseCfiPosition  := baseBrCfiPosition
 
   private val s2_mbtbResult    = mbtb.io.result
   private val s2_condTakenMask = tage.io.condTakenMask
@@ -346,6 +359,10 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
 
   private val s2_s1Prediction = RegEnable(s1_prediction, s1_fire)
   private val s3_s1Prediction = RegEnable(s2_s1Prediction, s2_fire)
+
+  private val s2_testPrediction = RegEnable(s1_testPrediction, s1_fire)
+  private val s3_testPrediction = RegEnable(s2_testPrediction, s2_fire)
+  private val s3_testOverride = s3_valid && !s3_prediction.isIdentical(s3_testPrediction)
 
   s3_override := s3_valid && !s3_prediction.isIdentical(s3_s1Prediction)
 
@@ -539,6 +556,22 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   XSPerfAccumulate("s1_use_ubtb", io.toFtq.prediction.fire && ubtb.io.prediction.taken)
   XSPerfAccumulate("s1_use_abtb", io.toFtq.prediction.fire && !ubtb.io.prediction.taken && abtb.io.prediction.taken)
   XSPerfAccumulate("s1_use_microTage", io.toFtq.prediction.fire && abtb.io.useMicroTage)
+  private val test_avoidOverride = !s3_override && s3_testOverride && s3_utageMeta.testUseMicroTage
+  private val test_causeOverride = s3_override && !s3_testOverride && s3_utageMeta.testUseMicroTage
+  dontTouch(test_avoidOverride)
+  dontTouch(test_causeOverride)
+  XSPerfAccumulate("useMicroTage_avoidOverride", !s3_override && s3_testOverride)
+  XSPerfAccumulate("useMicroTage_causeOverride", s3_override && !s3_testOverride)
+  XSPerfAccumulate("useMicroTage_avoidOverride1", test_avoidOverride)
+  XSPerfAccumulate("useMicroTage_causeOverride1", test_causeOverride)
+  XSPerfAccumulate("both_causeOverride", s3_override && s3_testOverride)
+  XSPerfAccumulate("fromFtq_redirect", io.fromFtq.redirect.valid)
+  
+  private val testRedirect = io.fromFtq.redirect.valid
+  private val s1_testRedirect = RegEnable(testRedirect, s0_fire)
+  private val s2_testRedirect = RegEnable(s1_testRedirect, s1_fire)
+  private val s3_testRedirect = RegEnable(s2_testRedirect, s2_fire)
+  XSPerfAccumulate("fromFtq_override_after_Redirect", s3_testRedirect && io.toFtq.prediction.fire && io.toFtq.prediction.bits.s3Override)
   XSPerfAccumulate(
     "s1_use_fallThrough",
     io.toFtq.prediction.fire && !ubtb.io.prediction.taken && !abtb.io.prediction.taken
