@@ -177,7 +177,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
     case (entry, hit) => (entry.attribute.isDirect || entry.attribute.isIndirect) && hit
   }
   private val s2_microTageHit = s2_realEntries.zip(s2_hitMask).map {
-    case (entry, hit) => hit && (entry.position === microTagePred.bits.cfiPosition)
+    case (entry, hit) => hit && (entry.position === microTagePred.bits.cfiPosition) && entry.attribute.isConditional
   }
   private val useMicroTage = s2_microTageHit.reduce(_ || _) && microTagePred.valid && s2_valid
   // When microTAGE makes a prediction, it must be compared against the position of the jump branch instruction.
@@ -191,7 +191,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
 
   // Only use the microTage result when microTage is valid and a hit occurs.
   io.useMicroTage           := useMicroTage
-  io.prediction.taken       := Mux(useMicroTage, microTagePred.bits.taken, s2_valid && s2_taken)
+  io.prediction.taken       := Mux(useMicroTage, microTageTakenOH.reduce(_ || _), s2_valid && s2_taken)
   io.prediction.target      := Mux(useMicroTage, microTageTarget, s2_firstTakenTarget)
   io.prediction.attribute   := Mux(useMicroTage, microTageEntry.attribute, s2_firstTakenEntry.attribute)
   io.prediction.cfiPosition := Mux(useMicroTage, microTageEntry.position, s2_firstTakenEntry.position)
