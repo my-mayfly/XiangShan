@@ -291,37 +291,61 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   // TODO: maybe need compare position？
 
   // When microTAGE participates in prediction, it has the highest priority in stage S1.
-  // private val shouldUseUtage =
-  //   (ubtb.io.prediction.cfiPosition === utage.io.prediction.bits.cfiPosition) && utage.io.prediction.valid
-  // private val s1_realUbtbTaken = Mux(
-  //   shouldUseUtage,
-  //   utage.io.prediction.bits.taken,
-  //   ubtb.io.prediction.taken && !abtb.io.useMicroTage
-  // )
-  private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
+  // private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
+  // s1_prediction :=
+  //   MuxCase(
+  //     fallThrough.io.prediction,
+  //     Seq(
+  //       s1_realUbtbTaken         -> ubtb.io.prediction,
+  //       abtb.io.prediction.taken -> abtb.io.prediction
+  //     )
+  //   )
   s1_prediction :=
     MuxCase(
       fallThrough.io.prediction,
       Seq(
-        s1_realUbtbTaken         -> ubtb.io.prediction,
-        abtb.io.prediction.taken -> abtb.io.prediction
+        abtb.io.prediction.taken    -> abtb.io.prediction,
+        (ubtb.io.prediction.taken && !abtb.io.useAbtb) -> ubtb.io.prediction
+      )
+    )
+
+  private val s1_testPrediction = Wire(new Prediction)
+  s1_testPrediction :=
+    MuxCase(
+      fallThrough.io.prediction,
+      Seq(
+        abtb.io.testPrediction.taken  -> abtb.io.testPrediction,
+        (ubtb.io.prediction.taken && !abtb.io.useAbtb) -> ubtb.io.prediction
       )
     )
 
   // ---------- Base Table Info for microTAGE Meta ----------
-  private val baseBrTaken = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.attribute.isConditional,
-    Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
+  // private val baseBrTaken = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.attribute.isConditional,
+  //   Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
+  // )
+  // private val baseBrCfiPosition = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.cfiPosition,
+  //   Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
+  // )
+  private val baseTaken = Mux(
+    abtb.io.useAbtb,
+    abtb.io.testPrediction.taken && abtb.io.testPrediction.attribute.isConditional,
+    Mux(ubtb.io.prediction.taken && ubtb.io.prediction.attribute.isConditional, true.B, false.B)
   )
   private val baseBrCfiPosition = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.cfiPosition,
-    Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
+    abtb.io.useAbtb,
+    Mux(abtb.io.testPrediction.taken && abtb.io.testPrediction.attribute.isConditional, abtb.io.prediction.cfiPosition, 0.U),
+    Mux(ubtb.io.prediction.taken && ubtb.io.prediction.attribute.isConditional, ubtb.io.prediction.cfiPosition, 0.U)
   )
 
   s1_utageMeta                 := utage.io.meta.bits
-  s1_utageMeta.baseTaken       := baseBrTaken
+  s1_utageMeta.testMismatchUbtb := (ubtb.io.prediction.taken ^ abtb.io.prediction.taken) ||
+    (ubtb.io.prediction.cfiPosition =/= abtb.io.prediction.cfiPosition)
+  s1_utageMeta.testUseMicroTage := abtb.io.useMicroTage
+  s1_utageMeta.baseTaken       := baseTaken
   s1_utageMeta.baseCfiPosition := baseBrCfiPosition
 
   private val s2_mbtbResult    = mbtb.io.result
@@ -360,6 +384,10 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
 
   private val s2_s1Prediction = RegEnable(s1_prediction, s1_fire)
   private val s3_s1Prediction = RegEnable(s2_s1Prediction, s2_fire)
+
+  private val s2_testPrediction = RegEnable(s1_testPrediction, s1_fire)
+  private val s3_testPrediction = RegEnable(s2_testPrediction, s2_fire)
+  private val s3_testOverride = s3_valid && !s3_prediction.isIdentical(s3_testPrediction)
 
   s3_override := s3_valid && !s3_prediction.isIdentical(s3_s1Prediction)
 
@@ -564,6 +592,18 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   )
 
   /* *** perf pred *** */
+
+  XSPerfAccumulate("s1_use_microTage", io.toFtq.prediction.fire && abtb.io.useMicroTage)
+  private val test_avoidOverride = !s3_override && s3_testOverride && s3_utageMeta.testUseMicroTage
+  private val test_causeOverride = s3_override && !s3_testOverride && s3_utageMeta.testUseMicroTage
+  dontTouch(test_avoidOverride)
+  dontTouch(test_causeOverride)
+  XSPerfAccumulate("useMicroTage_avoidOverride", !s3_override && s3_testOverride)
+  XSPerfAccumulate("useMicroTage_causeOverride", s3_override && !s3_testOverride)
+  XSPerfAccumulate("useMicroTage_avoidOverride1", test_avoidOverride)
+  XSPerfAccumulate("useMicroTage_causeOverride1", test_causeOverride)
+  XSPerfAccumulate("both_causeOverride", s3_override && s3_testOverride)
+  XSPerfAccumulate("fromFtq_redirect", io.fromFtq.redirect.valid)
 
   XSPerfAccumulate("toFtqFire", io.toFtq.prediction.fire)
   XSPerfAccumulate("s3Override", io.toFtq.prediction.fire && io.toFtq.prediction.bits.s3Override)
