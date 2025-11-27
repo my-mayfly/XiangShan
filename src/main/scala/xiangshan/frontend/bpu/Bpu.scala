@@ -284,13 +284,31 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   //   utage.io.prediction.bits.taken,
   //   ubtb.io.prediction.taken && !abtb.io.useMicroTage
   // )
-  private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
+  // private val s1_realUbtbTaken = ubtb.io.prediction.taken && !abtb.io.useMicroTage
+  // s1_prediction :=
+  //   MuxCase(
+  //     fallThrough.io.prediction,
+  //     Seq(
+  //       s1_realUbtbTaken         -> ubtb.io.prediction,
+  //       abtb.io.prediction.taken -> abtb.io.prediction
+  //     )
+  //   )
+
+  // private val s1_testPrediction = Wire(new Prediction)
+  // s1_testPrediction :=
+  //   MuxCase(
+  //     fallThrough.io.prediction,
+  //     Seq(
+  //       ubtb.io.prediction.taken      -> ubtb.io.prediction,
+  //       abtb.io.testPrediction.taken  -> abtb.io.testPrediction
+  //     )
+  //   )
   s1_prediction :=
     MuxCase(
       fallThrough.io.prediction,
       Seq(
-        s1_realUbtbTaken         -> ubtb.io.prediction,
-        abtb.io.prediction.taken -> abtb.io.prediction
+        abtb.io.prediction.taken    -> abtb.io.prediction,
+        (ubtb.io.prediction.taken && !abtb.io.useAbtb) -> ubtb.io.prediction
       )
     )
 
@@ -299,21 +317,33 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     MuxCase(
       fallThrough.io.prediction,
       Seq(
-        ubtb.io.prediction.taken      -> ubtb.io.prediction,
-        abtb.io.testPrediction.taken  -> abtb.io.testPrediction
+        abtb.io.testPrediction.taken  -> abtb.io.testPrediction,
+        (ubtb.io.prediction.taken && !abtb.io.useAbtb) -> ubtb.io.prediction
       )
     )
-
   // ---------- Base Table Info for microTAGE Meta ----------
+  // private val baseBrTaken = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.attribute.isConditional,
+  //   Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
+  // )
+  // private val baseBrCfiPosition = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.cfiPosition,
+  //   Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
+  // )
   private val baseBrTaken = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.attribute.isConditional,
-    Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
+    abtb.io.useAbtb,
+    abtb.io.testPrediction.taken && abtb.io.testPrediction.attribute.isConditional,
+    Mux(ubtb.io.prediction.taken && ubtb.io.prediction.attribute.isConditional, true.B, false.B)
+    // ubtb.io.prediction.taken,
+    // ubtb.io.prediction.attribute.isConditional,
+    // Mux(abtb.io.prediction.taken, abtb.io.prediction.attribute.isConditional, false.B)
   )
   private val baseBrCfiPosition = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.cfiPosition,
-    Mux(abtb.io.prediction.taken, abtb.io.prediction.cfiPosition, 0.U)
+    abtb.io.useAbtb,
+    Mux(abtb.io.testPrediction.taken && abtb.io.testPrediction.attribute.isConditional, abtb.io.prediction.cfiPosition, 0.U),
+    Mux(ubtb.io.prediction.taken && ubtb.io.prediction.attribute.isConditional, ubtb.io.prediction.cfiPosition, 0.U)
   )
 
   s1_utageMeta                  := utage.io.meta.bits

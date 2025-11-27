@@ -40,6 +40,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
     val prediction:          Prediction                 = Output(new Prediction)
     val testPrediction:      Prediction                 = Output(new Prediction)
     val useMicroTage:        Bool                       = Output(Bool())
+    val useAbtb:             Bool                       = Output(Bool())
     val meta:                AheadBtbMeta               = Output(new AheadBtbMeta)
     val debug_startVAddr:    PrunedAddr                 = Output(PrunedAddr(VAddrBits))
     val debug_previousVAddr: PrunedAddr                 = Output(PrunedAddr(VAddrBits))
@@ -154,7 +155,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s2_bankIdx    = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
   private val s2_bankMask   = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
   private val s2_entries    = RegEnable(Mux(overrideValid, s3_entries, s1_entries), s1_fire)
-  private val s2_startVAddr = RegEnable(s1_startVAddr, s1_fire)
+  private val s2_startVAddr = RegEnable(Mux(overrideValid, io.startVAddr, s1_startVAddr), s1_fire)
 
   when(s2_fire) {
     s3_setIdx     := s2_setIdx
@@ -212,6 +213,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   io.prediction.attribute   := Mux(useMicroTage, microTageEntry.attribute, s2_firstTakenEntry.attribute)
   io.prediction.cfiPosition := Mux(useMicroTage, microTageEntry.position, s2_firstTakenEntry.position)
 
+  io.useAbtb                := s2_valid && s2_hitMask.reduce(_ || _)
   io.testPrediction.taken   := s2_valid && s2_taken
   io.testPrediction.target  := s2_firstTakenTarget
   io.testPrediction.attribute   := s2_firstTakenEntry.attribute

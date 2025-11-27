@@ -21,7 +21,7 @@ import xiangshan.frontend.bpu.HasBpuParameters
 
 case class MainBtbParameters(
     NumEntries: Int = 8192,
-    NumWay:     Int = 8,
+    NumWay:     Int = 4,
     // Lowest level banks, each bank is a physical SRAM
     // This banking is used to resolve read-write conflicts and reduce SRAM power
     NumInternalBanks: Int = 4,
@@ -31,7 +31,7 @@ case class MainBtbParameters(
     NumAlignBanks:   Int = 2,
     TagWidth:        Int = 16,
     TargetWidth:     Int = 20, // 2B aligned
-    WriteBufferSize: Int = 8
+    WriteBufferSize: Int = 4
 ) {}
 
 // TODO: expose this to Parameters.scala / XSCore.scala
