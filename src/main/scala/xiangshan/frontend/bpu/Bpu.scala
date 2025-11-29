@@ -302,16 +302,18 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     )
 
   // ---------- Base Table Info for microTAGE Meta ----------
-  private val baseBrTaken = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.attribute.isConditional,
-    Mux(abtb.io.basePrediction.taken, abtb.io.basePrediction.attribute.isConditional, false.B)
-  )
-  private val baseBrCfiPosition = Mux(
-    ubtb.io.prediction.taken,
-    ubtb.io.prediction.cfiPosition,
-    Mux(abtb.io.basePrediction.taken, abtb.io.basePrediction.cfiPosition, 0.U)
-  )
+  // private val baseBrTaken = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.attribute.isConditional,
+  //   Mux(abtb.io.basePrediction.taken, abtb.io.basePrediction.attribute.isConditional, false.B)
+  // )
+  // private val baseBrCfiPosition = Mux(
+  //   ubtb.io.prediction.taken,
+  //   ubtb.io.prediction.cfiPosition,
+  //   Mux(abtb.io.basePrediction.taken, abtb.io.basePrediction.cfiPosition, 0.U)
+  // )
+  private val baseBrTaken = abtb.io.basePrediction.taken && abtb.io.basePrediction.attribute.isConditional
+  private val baseBrCfiPosition = Mux(abtb.io.basePrediction.taken && abtb.io.basePrediction.attribute.isConditional, abtb.io.basePrediction.cfiPosition, 0.U)
 
   s1_utageMeta                  := utage.io.meta.bits
   s1_utageMeta.testUseMicroTage := abtb.io.useMicroTage
