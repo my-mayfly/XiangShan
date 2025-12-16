@@ -129,9 +129,9 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   )
 
   private val t0_histMissHitMisPred =
-    !t0_predHit && t0_trainData.attribute.isConditional && t0_trainData.taken && t0_trainValid && io.fastTrain.get.bits.hasOverride && (
-      (t0_baseTaken =/= t0_trainData.taken) || (t0_baseCfiPosition =/= t0_trainData.cfiPosition)
-    )
+    !t0_predHit && t0_trainData.attribute.isConditional && t0_trainData.taken && t0_trainValid &&
+     io.fastTrain.get.bits.hasOverride &&
+      ((t0_baseTaken =/= t0_trainData.taken) || (t0_baseCfiPosition =/= t0_trainData.cfiPosition))
 
   private val t0_misPred             = t0_histHitMisPred || t0_histMissHitMisPred
   private val t0_histTableNeedAlloc  = t0_misPred && t0_trainValid
