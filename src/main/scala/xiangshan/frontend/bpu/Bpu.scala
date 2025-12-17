@@ -322,10 +322,10 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     0.U
   )
 
-  s1_utageMeta                  := utage.io.meta.bits
-  s1_utageMeta.testUseMicroTage := abtb.io.useMicroTage
-  s1_utageMeta.baseTaken        := baseBrTaken
-  s1_utageMeta.baseCfiPosition  := baseBrCfiPosition
+  s1_utageMeta                    := utage.io.meta.bits
+  s1_utageMeta.debug_useMicroTage := abtb.io.useMicroTage
+  s1_utageMeta.baseTaken          := baseBrTaken
+  s1_utageMeta.baseCfiPosition    := baseBrCfiPosition
 
   private val s2_mbtbResult    = mbtb.io.result
   private val s2_condTakenMask = tage.io.condTakenMask

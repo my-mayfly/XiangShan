@@ -19,10 +19,11 @@ import chisel3._
 import chisel3.util._
 import xiangshan.HasXSParameter
 import xiangshan.frontend.PrunedAddr
+import xiangshan.frontend.bpu.HalfAlignHelper
 import xiangshan.frontend.bpu.FoldedHistoryInfo
 import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
 
-trait Helpers extends HasMicroTageParameters {
+trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
   private object TAGEHistoryType {
     val Short   = 0
     val Medium  = 1

@@ -60,6 +60,9 @@ class MicroTageTable(
     val resp:        Valid[MicroTageResp]   = Output(Valid(new MicroTageResp))
     val update:      Valid[MicroTageUpdate] = Input(Valid(new MicroTageUpdate))
     val usefulReset: Bool                   = Input(Bool())
+    val debug_predIdx: UInt                 = UInt(log2Ceil(numSets).W)
+    val debug_predTag: UInt                 = UInt(tagLen.W)
+    val trainDebug:  MicroTageDebug         = Output(new MicroTageDebug)
   }
   class MicroTageEntry() extends MicroTageBundle {
     val valid:       Bool            = Bool()
@@ -83,13 +86,15 @@ class MicroTageTable(
     val tagFh       = allFh.getHistWithInfo(tagFhInfo).foldedHist
     val altTagFh    = allFh.getHistWithInfo(altTagFhInfo).foldedHist
     val idx = if (idxFhInfo.FoldedLength < log2Ceil(numSets)) {
-      (unhashedIdx ^ Cat(idxFh, idxFh))(log2Ceil(numSets) - 1, 0)
+      // (unhashedIdx ^ Cat(idxFh, idxFh))(log2Ceil(numSets) - 1, 0)
+      (unhashedIdx ^ Cat(0.U(3.W), idxFh) ^ (idxFh << 3))(log2Ceil(numSets) - 1, 0)
     } else {
+      // (unhashedIdx ^ (Cat(idxFh, idxFh) >> 3))(log2Ceil(numSets) - 1, 0)
       (unhashedIdx ^ idxFh)(log2Ceil(numSets) - 1, 0)
     }
     val lowTag  = (unhashedTag ^ tagFh ^ (altTagFh << 1))(histBitsInTag - 1, 0)
     val highTag = connectPcTag(unhashedIdx, tableId)
-    val tag     = Cat(highTag, lowTag)(tagLen - 1, 0)
+    val tag     = Cat(highTag, Cat(tagFh, lowTag))(tagLen - 1, 0)
     (idx, tag)
   }
 
@@ -98,6 +103,8 @@ class MicroTageTable(
   private val readEntry        = entries(s0_idx)
   private val readHit          = (readEntry.tag === s0_tag) && readEntry.valid
   private val usefulEntry      = usefulEntries(s0_idx)
+  io.debug_predIdx  := s0_idx
+  io.debug_predTag  := s0_tag
 
   io.resp.valid            := readHit
   io.resp.bits.taken       := readEntry.takenCtr.isPositive
@@ -117,7 +124,7 @@ class MicroTageTable(
   updateEntry.tag   := trainTag
   updateEntry.takenCtr.value := Mux(
     io.update.bits.allocValid,
-    oldTakenCtr.getNeutral,
+    Mux(io.update.bits.allocTaken, oldTakenCtr.getWeakPositive, oldTakenCtr.getWeakNegative),
     oldTakenCtr.getUpdate(io.update.bits.updateTaken)
   )
 
@@ -129,7 +136,7 @@ class MicroTageTable(
 
   private val updateUseful = Mux(
     io.update.bits.allocValid,
-    oldUseful.getNeutral,
+    oldUseful.getWeakNegative,
     oldUseful.getUpdate(io.update.bits.usefulCorrect)
   )
 
@@ -148,9 +155,16 @@ class MicroTageTable(
     }
   }
 
+  // ------------ for debug signal ----------- //
+  io.trainDebug                := 0.U.asTypeOf(new MicroTageDebug)
+  io.trainDebug.debug_idx      := trainIdx
+  io.trainDebug.debug_tag      := trainTag
+  io.trainDebug.debug_tableId  := tableId.U
+  io.trainDebug.debug_useful   := oldUseful.value
+  io.trainDebug.debug_takenCtr := oldTakenCtr.value
   // Per-index access distribution
-  for (i <- 0 until numSets) {
-    XSPerfAccumulate(f"update_idx_access_$i", (trainIdx === i.U) && io.update.valid)
-    XSPerfAccumulate(f"alloc_idx_access_$i", (trainIdx === i.U) && io.update.valid && io.update.bits.allocValid)
-  }
+  // for (i <- 0 until numSets) {
+  //   XSPerfAccumulate(f"update_idx_access_$i", (trainIdx === i.U) && io.update.valid)
+  //   XSPerfAccumulate(f"alloc_idx_access_$i", (trainIdx === i.U) && io.update.valid && io.update.bits.allocValid)
+  // }
 }
