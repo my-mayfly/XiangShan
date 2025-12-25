@@ -31,9 +31,9 @@ case class MicroTageParameters(
     ),
     TakenCtrWidth:       Int = 3,
     NumTables:           Int = 2,
-    TickWidth:           Int = 5,
+    TickWidth:           Int = 9,
     UsefulWidth:         Int = 2,
-    EnableTraceAndDebug: Boolean = false,
+    EnableTraceAndDebug: Boolean = true,
     BaseTableSize:       Int = 512 // TODO: Not necessarily required; currently unused.
 ) {}
 
