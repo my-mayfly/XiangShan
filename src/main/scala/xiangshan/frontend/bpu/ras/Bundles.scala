@@ -59,16 +59,18 @@ class RasInternalMeta(implicit p: Parameters) extends RasBundle {
   val tosw: RasPtr = new RasPtr
   val tosr: RasPtr = new RasPtr
   val nos:  RasPtr = new RasPtr
+  val notInSpec: Bool = Bool()
 }
 
 object RasInternalMeta {
-  def apply(ssp: UInt, sctr: UInt, tosw: RasPtr, tosr: RasPtr, nos: RasPtr)(implicit p: Parameters): RasInternalMeta = {
+  def apply(ssp: UInt, sctr: UInt, tosw: RasPtr, tosr: RasPtr, nos: RasPtr, notInSpec: Bool)(implicit p: Parameters): RasInternalMeta = {
     val e = Wire(new RasInternalMeta)
     e.ssp  := ssp
     e.sctr := sctr
     e.tosw := tosw
     e.tosr := tosr
     e.nos  := nos
+    e.notInSpec := notInSpec
     e
   }
 }
@@ -133,4 +135,5 @@ class RASTrace(implicit p: Parameters) extends RasBundle {
   val bos:            RasPtr = new RasPtr
   val ssp:            UInt   = UInt(log2Up(CommitStackSize).W)
   val nsp:            UInt   = UInt(log2Up(CommitStackSize).W)
+  val topNotInSpec:   Bool   = Bool()
 }

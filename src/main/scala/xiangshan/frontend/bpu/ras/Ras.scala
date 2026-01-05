@@ -77,6 +77,7 @@ class Ras(implicit p: Parameters) extends BasePredictor with HasRasParameters wi
   specMeta.tosr := stack.meta.tosr
   specMeta.tosw := stack.meta.tosw
   specMeta.nos  := stack.meta.nos
+  specMeta.notInSpec := stack.meta.notInSpec
 
   io.specMeta   := specMeta
   io.topRetAddr := stack.spec.popAddr
