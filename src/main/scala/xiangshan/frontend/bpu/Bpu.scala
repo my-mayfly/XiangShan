@@ -424,7 +424,9 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   s3_meta.utage  := s3_utageMeta
   s3_meta.mbtb   := s3_mbtbMeta
   s3_meta.tage   := s3_tageMeta
-  s3_meta.ras    := s3_rasMeta
+  if(!env.FPGAPlatform) { s3_meta.ras.sctr.get := s3_rasMeta.sctr}
+  s3_meta.ras.tosw    := s3_rasMeta.tosw
+  s3_meta.ras.ssp     := s3_rasMeta.ssp
   s3_meta.phr    := s3_phrMeta
   s3_meta.ittage := s3_ittageMeta
   s3_meta.sc     := s3_scMeta

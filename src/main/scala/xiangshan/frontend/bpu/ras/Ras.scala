@@ -103,6 +103,7 @@ class Ras(implicit p: Parameters) extends BasePredictor with HasRasParameters wi
   stack.commit.pushAddr  := commitPushAddr
   stack.commit.metaTosw  := commitInfo.meta.tosw
   stack.commit.metaSsp   := commitInfo.meta.ssp
+  stack.commit.metaSctr  := commitInfo.meta.sctr.getOrElse(0.U)
 
   XSPerfAccumulate("ras_redirect_recover", redirect.valid)
 

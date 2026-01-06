@@ -76,15 +76,7 @@ object RasInternalMeta {
 class RasMeta(implicit p: Parameters) extends RasBundle {
   val ssp:  UInt   = UInt(log2Up(CommitStackSize).W)
   val tosw: RasPtr = new RasPtr
-}
-
-object RasMeta {
-  def apply(ssp: UInt, tosw: RasPtr)(implicit p: Parameters): RasMeta = {
-    val e = Wire(new RasMeta)
-    e.ssp  := ssp
-    e.tosw := tosw
-    e
-  }
+  val sctr = if (!env.FPGAPlatform) Some(UInt(StackCounterWidth.W)) else None
 }
 
 class RasDebug(implicit p: Parameters) extends RasBundle {
@@ -116,4 +108,24 @@ class RasRedirectInfo(implicit p: Parameters) extends RasBundle {
   val cfiPc:     PrunedAddr      = PrunedAddr(VAddrBits)
   val meta:      RasInternalMeta = new RasInternalMeta
   val level:     UInt            = RedirectLevel()
+}
+
+class RASTrace(implicit p: Parameters) extends RasBundle {
+  val redirectPushPc: UInt   = UInt(VAddrBits.W)
+  val specPushPc:     UInt   = UInt(VAddrBits.W)
+  val topRetAddr:     UInt   = UInt(VAddrBits.W)
+  val specPush:       Bool   = Bool()
+  val specPop:        Bool   = Bool()
+  val normalRedirect: Bool   = Bool()
+  val pushRedirect:   Bool   = Bool()
+  val popRedirect:    Bool   = Bool()
+  val commitPush:     Bool   = Bool()
+  val commitTosw:     RasPtr = new RasPtr
+  val commitSctr:     UInt   = UInt(StackCounterWidth.W)
+  val tosw:           RasPtr = new RasPtr
+  val tosr:           RasPtr = new RasPtr
+  val bos:            RasPtr = new RasPtr
+  val ssp:            UInt   = UInt(log2Up(CommitStackSize).W)
+  val nsp:            UInt   = UInt(log2Up(CommitStackSize).W)
+  val specNearOverflow:   Bool   = Bool()
 }
