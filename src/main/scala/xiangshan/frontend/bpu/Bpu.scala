@@ -89,7 +89,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
 
   fallThrough.io.enable := true.B // fallThrough is always enabled
   utage.io.enable       := true.B
-  if (env.EnableConstantin && !env.FPGAPlatform) {
+  if (env.EnableConstantin && !env.Platform) {
     ubtb.io.enable   := Mux(constCtrl(0), constCtrl(1), ctrl.ubtbEnable)
     abtb.io.enable   := Mux(constCtrl(0), constCtrl(2), ctrl.abtbEnable)
     mbtb.io.enable   := Mux(constCtrl(0), constCtrl(3), ctrl.mbtbEnable)

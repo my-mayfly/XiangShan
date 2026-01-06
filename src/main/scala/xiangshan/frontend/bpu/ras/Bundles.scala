@@ -76,15 +76,18 @@ object RasInternalMeta {
 }
 
 class RasMeta(implicit p: Parameters) extends RasBundle {
+  // val sctr: UInt   = UInt(StackCounterWidth.W)
   val ssp:  UInt   = UInt(log2Up(CommitStackSize).W)
   val tosw: RasPtr = new RasPtr
+  val sctr = if (EnableTraceAndDebug) Some(UInt(StackCounterWidth.W)) else None
 }
 
 object RasMeta {
-  def apply(ssp: UInt, tosw: RasPtr)(implicit p: Parameters): RasMeta = {
+  def apply(ssp: UInt, tosw: RasPtr, sctr: Option[Bool] = None)(implicit p: Parameters): RasMeta = {
     val e = Wire(new RasMeta)
     e.ssp  := ssp
     e.tosw := tosw
+    if (EnableTraceAndDebug) e.sctr.get := sctr.get
     e
   }
 }
@@ -130,10 +133,12 @@ class RASTrace(implicit p: Parameters) extends RasBundle {
   val pushRedirect:   Bool   = Bool()
   val popRedirect:    Bool   = Bool()
   val commitPush:     Bool   = Bool()
+  val commitTosw:     RasPtr = new RasPtr
+  val commitSctr:     UInt   = UInt(StackCounterWidth.W)
   val tosw:           RasPtr = new RasPtr
   val tosr:           RasPtr = new RasPtr
   val bos:            RasPtr = new RasPtr
   val ssp:            UInt   = UInt(log2Up(CommitStackSize).W)
   val nsp:            UInt   = UInt(log2Up(CommitStackSize).W)
-  val topNotInSpec:   Bool   = Bool()
+  val specNearOverflow:   Bool   = Bool()
 }

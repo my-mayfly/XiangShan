@@ -379,7 +379,8 @@ object BlameBpuSource {
         // If cond before, TAGE mispredicts
         // If cond after, should trigger assertion, TODO
         blame := TAGE
-      }.elsewhen(attr.isReturn) {
+        // Within a 64-byte alignment boundary, there may be multiple indirect jump branch instructions.
+      }.elsewhen(attr.isReturn && (perf.s3Prediction.cfiPosition === branch.cfiPosition)) {
         blame := RAS
       }.otherwise {
         // Other branch type mismatch
