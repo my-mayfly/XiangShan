@@ -74,7 +74,7 @@ class MicroTageTable(
 
   // Read from all SRAM banks
   entrySram.zipWithIndex.foreach { case (bank, bankIdx) =>
-    bank.io.r.req.valid       := true.B
+    bank.io.r.req.valid       := bankOH(bankIdx)
     bank.io.r.req.bits.setIdx := bankReadInnerIndex
   }
 
