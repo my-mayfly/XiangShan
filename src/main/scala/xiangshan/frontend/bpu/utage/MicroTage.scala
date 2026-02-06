@@ -83,7 +83,9 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       t.req.bits.readIndex := a0_readIndex(idx)
       idx match {
         case 0 => t.usefulReset := lowTickCounter(LowTickWidth)
-        case 1 => t.usefulReset := highTickCounter(HighTickWidth)
+        case 1 => t.usefulReset := lowTickCounter(LowTickWidth)
+        case 2 => t.usefulReset := highTickCounter(HighTickWidth)
+        case 3 => t.usefulReset := highTickCounter(HighTickWidth)
         case _ => t.usefulReset := false.B
       }
   }

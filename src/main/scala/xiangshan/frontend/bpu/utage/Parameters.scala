@@ -23,15 +23,16 @@ import xiangshan.frontend.bpu.TageTableInfo
 case class MicroTageParameters(
     // TODO: The length of the Tag and its alias status will need to be adjusted later. The same applies to the number of items.
     TableInfos: Seq[MicroTageInfo] = Seq(
-      // new MicroTageInfo(512, 6, 6, 15),
+      new MicroTageInfo(512, 5, 5, 15),
       new MicroTageInfo(512, 9, 9, 15), // 3Taken maybe better than 2Taken
       // new MicroTageInfo(512, 12, 12, 15),
-      new MicroTageInfo(512, 16, 12, 16) // follow Tage.
+      new MicroTageInfo(512, 16, 10, 16), // follow Tage.
+      new MicroTageInfo(512, 24, 12, 16)
     ),
     TakenCtrWidth:       Int = 3,
-    NumTables:           Int = 2,
-    LowTickWidth:        Int = 8,
-    HighTickWidth:       Int = 9,
+    NumTables:           Int = 4,
+    LowTickWidth:        Int = 7,
+    HighTickWidth:       Int = 8,
     UsefulWidth:         Int = 2,
     PCHighTagStart:      Int = 7,
     EnableTraceAndDebug: Boolean = true,
@@ -61,8 +62,8 @@ trait HasMicroTageParameters extends HasBpuParameters {
   def EnableTraceAndDebug: Boolean = utageParameters.EnableTraceAndDebug
 
   // Hash PC into tag to reduce aliasing (at cost of capacity).
-  def PCTagHashBitsForShortHistory:  Seq[Int] = Seq(15, 13, 11, 9, 7, 6, 5, 4, 3, 2, 1)
-  def PCTagHashBitsForMediumHistory: Seq[Int] = Seq(18, 16, 14, 12, 10, 6, 5, 4, 2, 1)
-  def PCTagHashBitsForLongHistory: Seq[Int] = Seq(23, 20, 17, 14, 11, 9, 7, 5, 3, 2, 1)
+  def PCTagHashBitsForShortHistory: Seq[Int] = Seq(23, 20, 17, 14, 11, 9, 7, 5, 3, 2, 1)
+  def PCTagHashBitsForMediumHistory:  Seq[Int] = Seq(15, 13, 11, 9, 7, 6, 5, 4, 3, 2, 1)
+  def PCTagHashBitsForLongHistory: Seq[Int] = Seq(18, 16, 14, 12, 10, 6, 5, 4, 2, 1)
   def PCTagHashBitsDefault: Seq[Int] = Seq(31, 19, 12, 7, 4, 2, 1, 0)
 }

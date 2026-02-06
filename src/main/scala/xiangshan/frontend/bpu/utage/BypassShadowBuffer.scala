@@ -162,7 +162,8 @@ class BypassShadowBuffer(
     // Useful counter update
     val newUseful = Mux(
       doAlloc,
-      if (tableId == 0) UsefulCounter.WeakNegative else UsefulCounter.WeakPositive,
+      // if (tableId < NumTables/2) UsefulCounter.WeakNegative else UsefulCounter.WeakPositive,
+      UsefulCounter.WeakPositive,
       Mux(
         io.train.t1_update(way).bits.usefulValid,
         oldUseful.getUpdate(io.train.t1_update(way).bits.needUseful),
@@ -194,7 +195,7 @@ class BypassShadowBuffer(
       for (setIdx <- 0 until numSets / NumBanks) {
         for (wayIdx <- 0 until numWay) {
           val entry = usefulEntries(bankIdx)(setIdx)(wayIdx)
-          if (tableId == 0) {
+          if (tableId < NumTables/2) {
             usefulEntries(bankIdx)(setIdx)(wayIdx).value :=
               Mux(entry.value === 0.U, 0.U, entry.value - 1.U)
           } else {
