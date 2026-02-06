@@ -68,7 +68,8 @@ class BypassShadowBuffer(
   }
 
   private val entries   = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new BufferEntry))))
-  private val enqPtrVec = RegInit(0.U.asTypeOf(Vec(numWay, UInt(log2Ceil(numEntry).W)))) // Next available position
+  // private val enqPtrVec = RegInit(0.U.asTypeOf(Vec(numWay, UInt(log2Ceil(numEntry).W)))) 
+  private val enqPtrVec = RegInit(VecInit.tabulate(numWay)(i => i.U(log2Ceil(numEntry).W))) // Next available position
   private val deqPtr = RegInit(0.U(log2Ceil(numEntry).W)) // Position ready for write-back
 
   // Banked useful registers
@@ -206,6 +207,28 @@ class BypassShadowBuffer(
     }
   }
 
+  // Useful counter reset logic
+  when(io.usefulReset) {
+    for (bankIdx <- 0 until NumBanks) {
+      for (setIdx <- 0 until numSets / NumBanks) {
+        for (wayIdx <- 0 until numWay) {
+          val entry = usefulEntries(bankIdx)(setIdx)(wayIdx)
+          if (tableId < NumTables/2) {
+            usefulEntries(bankIdx)(setIdx)(wayIdx).value :=
+              Mux(entry.value === 0.U, 0.U, entry.value - 1.U)
+          } else {
+            usefulEntries(bankIdx)(setIdx)(wayIdx).value := entry.value >> 1.U
+          }
+        }
+      }
+    }
+  }
+
+  private val enqCount = PopCount(writeBufferValid)
+  for (way <- 0 until numWay) {
+    enqPtrVec(way) := enqPtrVec(way) + enqCount
+  }
+
   // Buffer management logic
   private val bufferMask       = RegInit(VecInit(Seq.fill(numEntry)(false.B)))
   private val bufferMaskEnqVec = Wire(Vec(numWay, Vec(numEntry, Bool())))
@@ -234,16 +257,6 @@ class BypassShadowBuffer(
     bufferMaskNext(i) := (bufferMask(i) || enqMask(i)) && bufferMaskDeq(i)
   }
   bufferMask := bufferMaskNext
-
-  // Find two empty slots for enqueue
-  private val (emptyIndex1, emptyIndex2, found1, found2, noZeros) = findTwoZeros(bufferMaskNext.asUInt)
-  for (i <- 0 until numWay) {
-    if (i == 0) {
-      enqPtrVec(i) := emptyIndex1
-    } else {
-      enqPtrVec(i) := emptyIndex2
-    }
-  }
 
   when(io.writeSuccess || !bufferMask(deqPtr)) {
     deqPtr := deqPtr + 1.U

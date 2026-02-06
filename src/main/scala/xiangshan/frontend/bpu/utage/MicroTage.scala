@@ -339,6 +339,12 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   XSPerfAccumulate("use_microtage", t1_useMicroTage && t1_fire)
   XSPerfAccumulate("train_hit_mispred", (t1_hasHitMisPredVec.asUInt.orR) && t1_fire)
   XSPerfAccumulate("train_miss_hit_mispred", (t1_missHitMisPredVec.asUInt.orR) && t1_fire)
+  XSPerfAccumulate("train_alloc_failed", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire)
+  XSPerfAccumulate("train_useful_low_reset", lowTickCounter(LowTickWidth))
+  XSPerfAccumulate("train_useful_high_reset", highTickCounter(HighTickWidth))
+  for (i <- 0 until 16) {
+    XSPerfAccumulate(f"train_alloc_failed-index${i}", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire && (t1_trainIdx(0)(3,0) === i.U))
+  }
 
   XSPerfAccumulate(
     "total_br",

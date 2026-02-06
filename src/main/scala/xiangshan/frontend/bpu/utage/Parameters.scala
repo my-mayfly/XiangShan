@@ -66,4 +66,17 @@ trait HasMicroTageParameters extends HasBpuParameters {
   def PCTagHashBitsForMediumHistory:  Seq[Int] = Seq(15, 13, 11, 9, 7, 6, 5, 4, 3, 2, 1)
   def PCTagHashBitsForLongHistory: Seq[Int] = Seq(18, 16, 14, 12, 10, 6, 5, 4, 2, 1)
   def PCTagHashBitsDefault: Seq[Int] = Seq(31, 19, 12, 7, 4, 2, 1, 0)
+
+  def PCTagConcatBitsForShortHistory: Seq[Int] = Seq(15, 13, 11, 9, 8, 7, 5, 4, 3, 2, 1)
+  def PCTagConcatBitsForMediumHistory: Seq[Int] = Seq(11, 10, 9, 8, 5, 3, 1)
+  def PCTagConcatBitsForLongHistory: Seq[Int] = Seq(11, 10, 9, 7, 5, 3)
+  def PCTagConcatBitsForVeryLongHistory: Seq[Int] = Seq(11, 7, 5, 3)
+
+  def PCTagXorBitsForShortHistory: Seq[Int] = Seq(10, 8, 6, 4, 2)
+  def PCTagXorBitsForMediumHistory: Seq[Int] = Seq(16, 14, 12, 10, 8, 6, 4, 2, 0)
+  def PCTagXorBitsForLongHistory: Seq[Int] = Seq(18, 16, 14, 12, 10, 8, 6, 4, 2, 0)
+  def PCTagXorBitsForVeryLongHistory: Seq[Int] = Seq(20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1, 0)
+
+  def PCTagConcatBitsDefault: Seq[Int] = PCTagConcatBitsForShortHistory
+  def PCTagXorBitsDefault: Seq[Int] = PCTagXorBitsForShortHistory
 }
