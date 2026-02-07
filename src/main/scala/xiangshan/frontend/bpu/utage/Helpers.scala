@@ -135,7 +135,7 @@ trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
   }
 
   def findTwoZeros(dataVec: UInt): (UInt, UInt, Bool, Bool, Bool) = {
-    val width = dataVec.getWidth
+    val width = (dataVec.getWidth)
     require(width == 8 || width == 16, "Width must be 8 or 16")
     val zerosVec       = (~dataVec).asBools
     val firstZeroFound = zerosVec.reduce(_ || _)
@@ -146,6 +146,31 @@ trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
     }
     val secondZeroFound = maskVec.reduce(_ || _)
     val secondZeroIdx   = PriorityEncoder(maskVec)
+    val noZeros         = !firstZeroFound
+    (firstZeroIdx, secondZeroIdx, firstZeroFound, secondZeroFound, noZeros)
+  }
+
+  def findTwoZerosOptimized(dataVec: UInt, deqPtr: UInt): (UInt, UInt, Bool, Bool, Bool) = {
+    val width = dataVec.getWidth
+    require(width == 16, "Width must be 16")
+    // 1. 快速生成掩码（Mux1H）
+    val maskTable = VecInit.tabulate(16) { i =>
+      ((1 << (i)) - 1).U(16.W)
+    }
+    val mask = maskTable(deqPtr)
+    // 2. 创建环形缓冲区并应用掩码
+    val circularBits = Cat(dataVec, dataVec)
+    val extendedMask = Cat(0.U(width.W), mask)  // 高16位是mask，低16位是0
+    val maskedBits = circularBits | extendedMask
+    // 3. 找0（可用项）
+    val zerosVec = ~maskedBits
+    // 4. 找第一个0
+    val tmpNumVec = VecInit.tabulate(32) { i => i.U(5.W) }
+    val firstZeroFound = zerosVec.orR
+    val firstZeroIdx = PriorityMux(zerosVec, tmpNumVec)
+    val maskVec = zerosVec & ~UIntToOH(firstZeroIdx)
+    val secondZeroFound = maskVec.orR
+    val secondZeroIdx = PriorityMux(maskVec, tmpNumVec)
     val noZeros         = !firstZeroFound
     (firstZeroIdx, secondZeroIdx, firstZeroFound, secondZeroFound, noZeros)
   }

@@ -67,6 +67,24 @@ class MicroTageTable(
       suffix = Option("bpu_utage")
     )).suggestName(s"utage_entry_sram_bank${bankIdx}")
   }
+  // private val entrySram = Seq.tabulate(NumBanks) { bankIdx =>
+  //   Module(new FoldedSRAMTemplate(
+  //     Vec(numWay, new MicroTageEntry),
+  //     setSplit = 1,
+  //     waySplit = 1,
+  //     dataSplit = 1,
+  //     set = numSets / NumBanks,
+  //     width = 1,
+  //     shouldReset = true,
+  //     holdRead = false,
+  //     singlePort = true,
+  //     useBitmask = true,
+  //     withClockGate = false,
+  //     hasMbist = hasMbist,
+  //     hasSramCtl = hasSramCtl,
+  //     suffix = Option("bpu_utage")
+  //   )).suggestName(s"utage_entry_sram_bank$bankIdx")
+  // }
 
   // Calculate bank selection for read access
   private val bankOH             = UIntToOH(getBankId(io.req.bits.readIndex, NumBanks))
@@ -118,9 +136,10 @@ class MicroTageTable(
   private val writeEntry     = wbuffer.io.tryWrite.bits.writeData
   private val bankWriteIndex = getBankInnerIndex(wbuffer.io.tryWrite.bits.writeIndex, NumBanks, numSets)
   private val forceWrite     = wbuffer.io.tryWrite.bits.forceWrite
-  private val writeMask      = UIntToOH(wbuffer.io.tryWrite.bits.way)
+  private val writeMask  = wbuffer.io.tryWrite.bits.wMask
   entrySram.zipWithIndex.foreach { case (bank, bankIdx) =>
     val writeValid = (!bank.io.r.req.valid || forceWrite) && tryWrite && (writeBankId === bankIdx.U)
     bank.io.w(writeValid, writeEntry, bankWriteIndex, writeMask)
+    // bank.io.w.apply(writeValid, writeEntry, bankWriteIndex, true.B, writeMaskBits)
   }
 }

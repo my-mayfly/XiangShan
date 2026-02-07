@@ -274,6 +274,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       val entryHitVec = t1_trainResult.map { x =>
         val notHitPosition = canGetPosition && (predCfiPosition =/= x.cfiPosition)
         x.valid && x.hit && (x.tableId === i.U) && (x.wayId === j.U) && !notHitPosition
+        // x.valid && x.hit && (x.tableId === i.U) && (x.wayId === j.U)
       }
       val entryBaseTakenVec   = t1_trainResult.map(_.baseTaken)
       val entryStrongBiasVec  = t1_trainResult.map(_.baseIsStrongBias)
@@ -342,8 +343,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   XSPerfAccumulate("train_alloc_failed", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire)
   XSPerfAccumulate("train_useful_low_reset", lowTickCounter(LowTickWidth))
   XSPerfAccumulate("train_useful_high_reset", highTickCounter(HighTickWidth))
-  for (i <- 0 until 16) {
-    XSPerfAccumulate(f"train_alloc_failed-index${i}", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire && (t1_trainIdx(0)(3,0) === i.U))
+  for (i <- 0 until 32) {
+    XSPerfAccumulate(f"train_alloc_failed_index${i}", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire && (t1_trainIdx(0)(4,0) === i.U))
   }
 
   XSPerfAccumulate(

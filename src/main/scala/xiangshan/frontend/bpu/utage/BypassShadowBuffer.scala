@@ -23,17 +23,14 @@ import utility.XSPerfAccumulate
 import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.FoldedHistoryInfo
 import xiangshan.frontend.bpu.SaturateCounter
+import xiangshan.frontend.bpu.CompareMatrix
 import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
 import yunsuan.vector.alu.VIntFixpTable.table
 
-// BypassShadowBuffer: A shadow buffer for TAGE table entries that:
-// - Holds entries pending write to SRAM (due to bandwidth/conflict)
-// - Allows predictor to "bypass" SRAM write latency by reading directly from buffer
-// - Maintains coherence: each logical index appears at most once
 class BypassShadowBuffer(
     val numSets:  Int,
     val numWay:   Int,
-    val numEntry: Int = 8,
+    val numEntry: Int = 16,  // 固定为16，保持最近16项
     val tableId:  Int,
     val NumBanks: Int = 4
 )(implicit p: Parameters) extends MicroTageModule with Helpers {
@@ -59,17 +56,25 @@ class BypassShadowBuffer(
     val usefulReset:  Bool            = Input(Bool())
   }
   val io = IO(new BypassBufferIO)
+  // Buffer项定义
   class BufferEntry extends Bundle {
-    val valid:     Bool           = Bool() // Indicates if entry is still in buffer
+    val valid:     Bool           = Bool()
     val entryData: MicroTageEntry = new MicroTageEntry
     val index:     UInt           = UInt(log2Ceil(MaxNumSets).W)
-    val waitWrite: Bool           = Bool()
     val way:       UInt           = UInt(log2Ceil(numWay).W)
+    // val age:       UInt           = UInt(4.W)  // 0-15的年龄，0最年轻，15最老
+    // val dirty:     Bool           = Bool()     // true=需要写回SRAM
   }
 
-  private val entries   = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new BufferEntry))))
-  // private val enqPtrVec = RegInit(0.U.asTypeOf(Vec(numWay, UInt(log2Ceil(numEntry).W)))) 
-  private val enqPtrVec = RegInit(VecInit.tabulate(numWay)(i => i.U(log2Ceil(numEntry).W))) // Next available position
+  class ReplaceItem extends Bundle {
+    val valid:     Bool           = Bool()
+    val age:       UInt           = UInt(log2Ceil(numEntry).W)
+    val dirty:     Bool           = Bool()
+  }
+
+  private val entries       = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new BufferEntry))))
+  private val statusEntries = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new ReplaceItem))))
+  private val enqPtrVec = RegInit(0.U.asTypeOf(Vec(numWay, UInt(log2Ceil(numEntry).W)))) // Next available position
   private val deqPtr = RegInit(0.U(log2Ceil(numEntry).W)) // Position ready for write-back
 
   // Banked useful registers
@@ -115,6 +120,7 @@ class BypassShadowBuffer(
     io.train.t0_read(way).useful         := useful.value
   }
 
+  // ==================== 训练更新逻辑 ====================
   // Training logic - stage 1
   private val t1_trainIndex       = RegNext(t0_trainIndex)
   private val t1_hitVec           = RegNext(t0_hitVec)
@@ -153,11 +159,12 @@ class BypassShadowBuffer(
     newEntry.takenCtr := Mux(
       doAlloc,
       Mux(io.train.t1_alloc.bits.taken, TakenCounter.WeakPositive, TakenCounter.WeakNegative),
-      Mux(
-        t1_hitVec(way),
-        oldTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken),
-        updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
-      )
+      updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
+      // Mux(
+      //   t1_hitVec(way),
+      //   oldTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken),
+      //   updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
+      // )
     )
 
     // Useful counter update
@@ -173,10 +180,9 @@ class BypassShadowBuffer(
     )
 
     val newBufferEntry = Wire(new BufferEntry)
-    newBufferEntry.valid     := true.B
+    newBufferEntry.valid := true.B
     newBufferEntry.entryData := newEntry
     newBufferEntry.index     := t1_trainIndex
-    newBufferEntry.waitWrite := true.B
     newBufferEntry.way       := way.U
 
     // Update buffer entry
@@ -207,68 +213,67 @@ class BypassShadowBuffer(
     }
   }
 
-  // Useful counter reset logic
-  when(io.usefulReset) {
-    for (bankIdx <- 0 until NumBanks) {
-      for (setIdx <- 0 until numSets / NumBanks) {
-        for (wayIdx <- 0 until numWay) {
-          val entry = usefulEntries(bankIdx)(setIdx)(wayIdx)
-          if (tableId < NumTables/2) {
-            usefulEntries(bankIdx)(setIdx)(wayIdx).value :=
-              Mux(entry.value === 0.U, 0.U, entry.value - 1.U)
-          } else {
-            usefulEntries(bankIdx)(setIdx)(wayIdx).value := entry.value >> 1.U
-          }
-        }
-      }
+  private val t1_ageVec = Wire(Vec(numEntry, UInt(log2Ceil(numEntry).W)))
+  t1_ageVec := statusEntries.map(e => e.age)
+  for(i <- 0 until numWay) {
+    t1_ageVec(enqPtrVec(i)) := (numEntry - 1).U
+  }
+
+
+  // 更新规则：
+  // 1. 被访问的项：timestamp = 15（最年轻）
+  // 2. 未被访问的项：每个周期 timestamp = timestamp - 1（逐渐变老）
+  // 3. 选择替换时：找timestamp最小的（最老）
+  private val t1_compareMatrix   = CompareMatrix(t1_ageVec)
+  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B))
+  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty))
+  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty))
+
+  private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(t1_invalidEntryVec)
+  private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(t1_cleanEntryVec)
+  private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(t1_dirtyEntryVec)
+  private val t1_invalidId = OHToUInt(t1_invalidEntryOH)
+  private val t1_cleanId = OHToUInt(t1_cleanEntryOH)
+  private val t1_dirtyId = OHToUInt(t1_dirtyEntryOH)
+  private val t1_hasInValid = t1_invalidEntryVec.reduce(_||_)
+  private val t1_hasInClean = t1_cleanEntryVec.reduce(_||_)
+  private val t1_hasInDirty = t1_dirtyEntryVec.reduce(_||_)
+
+  when(io.writeSuccess || !(statusEntries(deqPtr).dirty)) {
+    deqPtr := t1_dirtyId
+  }
+
+  for (way <- 0 until numWay) {
+    when(writeBufferValid(way) && !t1_hitVec(0)) {
+      enqPtrVec(way) := Mux(t1_hasInValid, t1_invalidId, Mux(t1_hasInClean, t1_cleanId, t1_dirtyId)) // t1_cleanId
     }
   }
 
-  private val enqCount = PopCount(writeBufferValid)
-  for (way <- 0 until numWay) {
-    enqPtrVec(way) := enqPtrVec(way) + enqCount
-  }
-
-  // Buffer management logic
-  private val bufferMask       = RegInit(VecInit(Seq.fill(numEntry)(false.B)))
-  private val bufferMaskEnqVec = Wire(Vec(numWay, Vec(numEntry, Bool())))
-
-  for (way <- 0 until numWay) {
-    bufferMaskEnqVec(way) := VecInit(Seq.fill(numEntry)(false.B))
-    when(writeBufferValid(way)) {
-      bufferMaskEnqVec(way) := UIntToOH(t1_bufferWriteId(way), numEntry).asBools
-    }
-  }
-
-  private val bufferMaskDeq = Wire(Vec(numEntry, Bool()))
-  bufferMaskDeq := VecInit(Seq.fill(numEntry)(true.B))
-  when(io.writeSuccess) {
+  when(io.writeSuccess || writeBufferValid(0)) {
     for (i <- 0 until numEntry) {
-      bufferMaskDeq(i) := (i.U =/= deqPtr)
+      statusEntries(i).valid := Mux(i.U === t1_bufferWriteId(0) && writeBufferValid(0), true.B, statusEntries(i).valid)
+      statusEntries(i).dirty := Mux(
+        i.U === t1_bufferWriteId(0) && writeBufferValid(0),
+        true.B,
+        Mux(i.U === deqPtr && io.writeSuccess, false.B, statusEntries(i).dirty)
+      )
+      statusEntries(i).age   :=
+        Mux(
+          writeBufferValid(0),
+          Mux(i.U === t1_bufferWriteId(0), (numEntry - 1).U, Mux(statusEntries(i).age === 0.U, 0.U, statusEntries(i).age - 1.U)),
+          statusEntries(i).age
+        )
     }
-  }
-
-  val enqMask = VecInit((0 until numEntry).map {
-    i => bufferMaskEnqVec.map(_(i)).reduce(_ || _) // Multi-way OR
-  })
-
-  val bufferMaskNext = Wire(Vec(numEntry, Bool()))
-  for (i <- 0 until numEntry) {
-    bufferMaskNext(i) := (bufferMask(i) || enqMask(i)) && bufferMaskDeq(i)
-  }
-  bufferMask := bufferMaskNext
-
-  when(io.writeSuccess || !bufferMask(deqPtr)) {
-    deqPtr := deqPtr + 1.U
   }
 
   // Write-back control logic
-  private val bufferCounter = RegNext(PopCount(bufferMaskNext), 0.U(log2Ceil(numEntry).W))
+  private val bufferDirtyVec = VecInit(statusEntries.map{e => e.dirty && e.valid})
+  private val bufferCounter = RegNext(PopCount(bufferDirtyVec), 0.U(log2Ceil(numEntry).W))
   private val forceWrite    = bufferCounter >= (numEntry - numWay).U
 
-  io.tryWrite.valid           := bufferMask(deqPtr)
+  io.tryWrite.valid           := statusEntries(deqPtr).valid && statusEntries(deqPtr).dirty
   io.tryWrite.bits.writeIndex := entries(deqPtr).index
   io.tryWrite.bits.writeData  := entries(deqPtr).entryData
-  io.tryWrite.bits.forceWrite := forceWrite && bufferMask(deqPtr)
+  io.tryWrite.bits.forceWrite := forceWrite && statusEntries(deqPtr).valid && statusEntries(deqPtr).dirty
   io.tryWrite.bits.way        := entries(deqPtr).way
 }
