@@ -136,7 +136,7 @@ class MicroTageTable(
   private val writeEntry     = wbuffer.io.tryWrite.bits.writeData
   private val bankWriteIndex = getBankInnerIndex(wbuffer.io.tryWrite.bits.writeIndex, NumBanks, numSets)
   private val forceWrite     = wbuffer.io.tryWrite.bits.forceWrite
-  private val writeMask  = wbuffer.io.tryWrite.bits.wMask
+  private val writeMask      = wbuffer.io.tryWrite.bits.wMask
   entrySram.zipWithIndex.foreach { case (bank, bankIdx) =>
     val writeValid = (!bank.io.r.req.valid || forceWrite) && tryWrite && (writeBankId === bankIdx.U)
     bank.io.w(writeValid, writeEntry, bankWriteIndex, writeMask)
