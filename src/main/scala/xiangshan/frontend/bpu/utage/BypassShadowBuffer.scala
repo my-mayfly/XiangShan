@@ -166,7 +166,26 @@ class BypassShadowBuffer(
       UsefulCounter.WeakPositive,
       oldUseful.getUpdate(io.train.t1_update(way).bits.needUseful)
     )
-    t1_trainReadUseful(way) := newUseful
+    when(doAlloc || (io.train.t1_update(way).valid && io.train.t1_update(way).bits.usefulValid)) {
+      t1_trainReadUseful(way) := newUseful
+    }
+  }
+
+  // Useful counter reset logic
+  when(io.usefulReset) {
+    for (bankIdx <- 0 until NumBanks) {
+      for (setIdx <- 0 until numSets / NumBanks) {
+        for (wayIdx <- 0 until numWay) {
+          val entry = usefulEntries(bankIdx)(setIdx)(wayIdx)
+          if (tableId < NumTables/2) {
+            usefulEntries(bankIdx)(setIdx)(wayIdx).value :=
+              Mux(entry.value === 0.U, 0.U, entry.value - 1.U)
+          } else {
+            usefulEntries(bankIdx)(setIdx)(wayIdx).value := entry.value >> 1.U
+          }
+        }
+      }
+    }
   }
 
   private val newBufferEntry = Wire(new BufferEntry)
