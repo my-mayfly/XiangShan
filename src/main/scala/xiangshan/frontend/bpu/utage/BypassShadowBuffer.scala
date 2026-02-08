@@ -149,12 +149,12 @@ class BypassShadowBuffer(
     newMicroTageEntryVec(way).takenCtr := Mux(
       doAlloc,
       Mux(io.train.t1_alloc.bits.taken, TakenCounter.WeakPositive, TakenCounter.WeakNegative),
-      updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
-      // Mux(
-      //   t1_hitVec(way),
-      //   oldTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken),
-      //   updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
-      // )
+      // updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
+      Mux(
+        t1_microTageHitVec(way) && (oldEntry.tag === io.train.t1_tag),
+        oldTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken),
+        updateTakenCtr.getUpdate(io.train.t1_update(way).bits.updateTaken)
+      )
     )
   }
 
