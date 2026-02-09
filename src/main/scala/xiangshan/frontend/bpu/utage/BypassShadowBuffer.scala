@@ -117,12 +117,17 @@ class BypassShadowBuffer(
     io.train.t0_read(way).useful         := useful.value
   }
 
-  private val t1_trainIndex       = RegNext(t0_trainIndex)
+  // ===================== Bypss 允许写入错误的数据，但绝不允许出现连个readIndex 相同的项 =====================
+  private val t1_trainIndex       = RegNext(t0_trainIndex, 0.U(log2Ceil(MaxNumSets).W))
+  private val needBypass = (t1_trainIndex === t0_trainIndex)
+  private val t1_bufferWriteId = Wire(UInt(log2Ceil(numEntry).W))
+  private val t1_bypassId   = RegNext(t1_bufferWriteId)
+  private val t1_needBypass = RegNext(needBypass, false.B)
   private val t1_hasHit           = RegNext(t0_hasHit, false.B)
   private val t1_microTageHitVec  = RegNext(t0_microTageHitVec)
   private val t1_hitBufferId      = RegNext(t0_hitBufferId)
   private val t1_trainReadEntries = RegNext(t0_trainReadEntries)
-  private val t1_bufferWriteId    = Mux(t1_hasHit, t1_hitBufferId, enqPtr)
+  t1_bufferWriteId    := Mux(t1_needBypass, t1_bypassId, Mux(t1_hasHit, t1_hitBufferId, enqPtr))
 
   // Access useful registers for t1 stage
   private val t1_bankIdx         = getBankId(t1_trainIndex, NumBanks)
@@ -198,23 +203,23 @@ class BypassShadowBuffer(
     newBufferEntry.entryData(i).bits := Mux(writeBufferValid(i), newMicroTageEntryVec(i), entries(t1_bufferWriteId).entryData(i).bits)
   }
 
-  private val t1_hasWrite = writeBufferValid.reduce(_ || _)
+  private val t1_hasWrite = writeBufferValid.reduce(_||_)
   when(t1_hasWrite) {
     entries(t1_bufferWriteId) := newBufferEntry
   }
 
   private val t1_ageVec = Wire(Vec(numEntry, UInt(log2Ceil(numEntry).W)))
   t1_ageVec := statusEntries.map(e => e.age)
-  t1_ageVec(enqPtr) := (numEntry - 1).U
+  private val writeBufferMask = UIntToOH(t1_bufferWriteId)
 
   // 更新规则：
   // 1. 被访问的项：timestamp = 15（最年轻）
   // 2. 未被访问的项：每个周期 timestamp = timestamp - 1（逐渐变老）
   // 3. 选择替换时：找timestamp最小的（最老）
   private val t1_compareMatrix   = CompareMatrix(t1_ageVec)
-  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B)).asUInt & ~enqMask
-  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty)).asUInt & ~enqMask
-  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty)).asUInt | enqMask
+  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B)).asUInt & ~writeBufferMask
+  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty)).asUInt & ~writeBufferMask
+  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty)).asUInt
 
   private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(VecInit(t1_invalidEntryVec.asBools))
   private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_cleanEntryVec.asBools))
@@ -263,4 +268,24 @@ class BypassShadowBuffer(
   io.tryWrite.bits.writeData  := entries(deqPtr).entryData.map(_.bits)
   io.tryWrite.bits.forceWrite := forceWrite && statusEntries(deqPtr).valid && statusEntries(deqPtr).dirty
   io.tryWrite.bits.wMask      := VecInit(entries(deqPtr).entryData.map(_.valid)).asUInt
+
+// ==========================================================================
+// === Buffer性能诊断计数器 ===
+// ==========================================================================
+  // 1. Buffer命中率统计
+  XSPerfAccumulate("buffer_hit_total", a1_hasHit)
+
+  private val writeNew = t1_hasWrite && (!t1_hasHit || (enqPtr === t1_bufferWriteId))
+
+  XSPerfAccumulate("buffer_replace_total", writeNew)
+  XSPerfAccumulate("buffer_replace_invalid", writeNew && t1_hasInValid)
+  XSPerfAccumulate("buffer_replace_clean", writeNew && !t1_hasInValid && t1_hasInClean)
+  XSPerfAccumulate("buffer_replace_dirty", writeNew && !t1_hasInValid && !t1_hasInClean)
+
+  // 3. Buffer写回分析
+  XSPerfAccumulate("buffer_writeback_total", io.tryWrite.valid)
+  for (i <- 0 until 8) {
+    XSPerfAccumulate(f"buffer_writeback_age${i}", io.tryWrite.valid && statusEntries(deqPtr).age === i.U)
+  }
+  XSPerfAccumulate("need_bypass", t1_needBypass && t1_hasWrite)
 }
