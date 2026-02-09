@@ -186,7 +186,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   io.meta              := s1_predMeta
 
   when(a2_fire) {
-    a3_predRead := a2_predRead
+    a3_predRead  := a2_predRead
+    a3_readIndex := a2_readIndex
   }
 
   // ------------ MicroTage is only concerned with conditional branches ---------- //
@@ -343,9 +344,12 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   XSPerfAccumulate("train_alloc_failed", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire)
   XSPerfAccumulate("train_useful_low_reset", lowTickCounter(LowTickWidth))
   XSPerfAccumulate("train_useful_high_reset", highTickCounter(HighTickWidth))
+  private val tmp_alloc0 = (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire && (t1_trainIdx(0)(4,0) === 0.U)
+  dontTouch(tmp_alloc0)
   for (i <- 0 until 32) {
     XSPerfAccumulate(f"train_alloc_failed_index${i}", (t1_normalAllocMask === 0.U) && t1_needAlloc && t1_fire && (t1_trainIdx(0)(4,0) === i.U))
   }
+  XSPerfAccumulate("train_alloc_failed0", tmp_alloc0)
 
   XSPerfAccumulate(
     "total_br",

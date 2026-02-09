@@ -86,7 +86,7 @@ class BypassShadowBuffer(
   private val a0_entryHitOH  = Wire(Vec(numEntry, Bool()))
   a0_entryHitOH  := entries.map(e => (e.index === io.req.readIndex) && e.valid)
 
-  private val a1_entryHitOH  = RegNext(a0_entryHitOH)
+  private val a1_entryHitOH  = RegNext(a0_entryHitOH, 0.U.asTypeOf(Vec(numEntry, Bool())))
   private val a1_bufferEntry = Mux1H(a1_entryHitOH, entryDataVec)
   private val a1_hasHit      = a1_entryHitOH.reduce(_ || _)
   private val a1_microTageHitVec = a1_bufferEntry.map(e => e.valid && a1_hasHit)
@@ -118,7 +118,7 @@ class BypassShadowBuffer(
   }
 
   private val t1_trainIndex       = RegNext(t0_trainIndex)
-  private val t1_hasHit           = RegNext(t0_hasHit)
+  private val t1_hasHit           = RegNext(t0_hasHit, false.B)
   private val t1_microTageHitVec  = RegNext(t0_microTageHitVec)
   private val t1_hitBufferId      = RegNext(t0_hitBufferId)
   private val t1_trainReadEntries = RegNext(t0_trainReadEntries)
@@ -163,7 +163,8 @@ class BypassShadowBuffer(
     val oldUseful = t1_trainReadUseful(way)
     val newUseful = Mux(
       doAlloc,
-      UsefulCounter.WeakPositive,
+      // UsefulCounter.WeakPositive,
+      if(tableId < NumTables/2) UsefulCounter.WeakNegative else UsefulCounter.WeakPositive,
       oldUseful.getUpdate(io.train.t1_update(way).bits.needUseful)
     )
     when(doAlloc || (io.train.t1_update(way).valid && io.train.t1_update(way).bits.usefulValid)) {
@@ -183,6 +184,7 @@ class BypassShadowBuffer(
           } else {
             usefulEntries(bankIdx)(setIdx)(wayIdx).value := entry.value >> 1.U
           }
+          // usefulEntries(bankIdx)(setIdx)(wayIdx).value := entry.value >> 1.U
         }
       }
     }
@@ -210,33 +212,32 @@ class BypassShadowBuffer(
   // 2. 未被访问的项：每个周期 timestamp = timestamp - 1（逐渐变老）
   // 3. 选择替换时：找timestamp最小的（最老）
   private val t1_compareMatrix   = CompareMatrix(t1_ageVec)
-  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B))
-  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty))
-  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty))
+  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B)).asUInt & ~enqMask
+  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty)).asUInt & ~enqMask
+  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty)).asUInt | enqMask
 
-  private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(VecInit((t1_invalidEntryVec.asUInt & ~enqMask).asBools))
-  private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit((t1_cleanEntryVec.asUInt & ~enqMask).asBools))
-  private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit((t1_dirtyEntryVec.asUInt & enqMask).asBools))
+  private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(VecInit(t1_invalidEntryVec.asBools))
+  private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_cleanEntryVec.asBools))
+  private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_dirtyEntryVec.asBools))
   private val t1_invalidId = OHToUInt(t1_invalidEntryOH)
   private val t1_cleanId = OHToUInt(t1_cleanEntryOH)
   private val t1_dirtyId = OHToUInt(t1_dirtyEntryOH)
-  private val t1_hasInValid = t1_invalidEntryVec.reduce(_||_)
-  private val t1_hasInClean = t1_cleanEntryVec.reduce(_||_)
-  private val t1_hasInDirty = t1_dirtyEntryVec.reduce(_||_)
+  private val t1_hasInValid = t1_invalidEntryVec.orR
+  private val t1_hasInClean = t1_cleanEntryVec.orR
+  private val t1_hasInDirty = t1_dirtyEntryVec.orR
 
   when(io.writeSuccess || !(statusEntries(deqPtr).dirty)) {
     deqPtr := t1_dirtyId
   }
 
   private val nexEnqPtr = Mux(t1_hasInValid, t1_invalidId, Mux(t1_hasInClean, t1_cleanId, t1_dirtyId))
-  when(t1_hasWrite && t1_hasHit) {
+  when(t1_hasWrite && (!t1_hasHit || (enqPtr === t1_bufferWriteId))) {
     enqPtr := nexEnqPtr
     enqMask := UIntToOH(nexEnqPtr)
   }
 
   when(io.writeSuccess || t1_hasWrite) {
     for (i <- 0 until numEntry) {
-      
       statusEntries(i).valid := Mux(i.U === t1_bufferWriteId && t1_hasWrite, true.B, statusEntries(i).valid)
       statusEntries(i).dirty := Mux(
         i.U === t1_bufferWriteId && t1_hasWrite,
