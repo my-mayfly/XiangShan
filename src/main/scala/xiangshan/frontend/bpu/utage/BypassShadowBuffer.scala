@@ -95,7 +95,8 @@ class BypassShadowBuffer(
   io.resp.readEntries := a1_microTageEntryVec
 
   // Training logic - stage 0
-  private val t0_trainIndex    = io.train.t0_trainIndex
+  private val t0_fire          = io.train.t0_trainIndex.valid
+  private val t0_trainIndex    = io.train.t0_trainIndex.bits
   private val t0_entryHitOH    = Wire(Vec(numEntry, Bool()))
   t0_entryHitOH  := entries.map(e => (e.index === t0_trainIndex) && e.valid)
   private val t0_hasHit  = t0_entryHitOH.reduce(_ || _)
@@ -118,16 +119,19 @@ class BypassShadowBuffer(
   }
 
   // ===================== Bypss 允许写入错误的数据，但绝不允许出现连个readIndex 相同的项 =====================
+  private val needBypass   = WireDefault(false.B)
+  private val bypassId     = WireDefault(0.U(log2Ceil(numEntry).W))
+  private val bypassHasHit = Wire(Bool())
+  private val bypassHitVec = Wire(Vec(numWay, Bool()))
+  private val bypassReadEntries = Wire(Vec(numWay, new MicroTageEntry))
+
+  private val t1_fire             = RegNext(t0_fire, false.B)
   private val t1_trainIndex       = RegNext(t0_trainIndex, 0.U(log2Ceil(MaxNumSets).W))
-  private val needBypass = (t1_trainIndex === t0_trainIndex)
-  private val t1_bufferWriteId = Wire(UInt(log2Ceil(numEntry).W))
-  private val t1_bypassId   = RegNext(t1_bufferWriteId)
-  private val t1_needBypass = RegNext(needBypass, false.B)
-  private val t1_hasHit           = RegNext(t0_hasHit, false.B)
-  private val t1_microTageHitVec  = RegNext(t0_microTageHitVec)
-  private val t1_hitBufferId      = RegNext(t0_hitBufferId)
-  private val t1_trainReadEntries = RegNext(t0_trainReadEntries)
-  t1_bufferWriteId    := Mux(t1_needBypass, t1_bypassId, Mux(t1_hasHit, t1_hitBufferId, enqPtr))
+  private val t1_hasHit           = RegNext(Mux(needBypass, bypassHasHit, t0_hasHit), false.B)
+  private val t1_microTageHitVec  = RegNext(Mux(needBypass, bypassHitVec, t0_microTageHitVec))
+  private val t1_hitBufferId      = RegNext(Mux(needBypass, bypassId, t0_hitBufferId), 0.U(log2Ceil(numEntry).W))
+  private val t1_trainReadEntries = RegNext(Mux(needBypass, bypassReadEntries, t0_trainReadEntries))
+  private val t1_bufferWriteId    = Mux(t1_hasHit, t1_hitBufferId, enqPtr)
 
   // Access useful registers for t1 stage
   private val t1_bankIdx         = getBankId(t1_trainIndex, NumBanks)
@@ -208,8 +212,15 @@ class BypassShadowBuffer(
     entries(t1_bufferWriteId) := newBufferEntry
   }
 
+  needBypass := (t1_trainIndex === t0_trainIndex) && t1_hasWrite
+  bypassId   := t1_bufferWriteId
+  bypassHasHit := true.B
+  bypassHitVec := newBufferEntry.entryData.map{e =>e.valid}
+  bypassReadEntries := newBufferEntry.entryData.map{e => e.bits}
+
   private val t1_ageVec = Wire(Vec(numEntry, UInt(log2Ceil(numEntry).W)))
   t1_ageVec := statusEntries.map(e => e.age)
+  t1_ageVec(t1_bufferWriteId) := (numEntry - 1).U
   private val writeBufferMask = UIntToOH(t1_bufferWriteId)
 
   // 更新规则：
@@ -217,19 +228,32 @@ class BypassShadowBuffer(
   // 2. 未被访问的项：每个周期 timestamp = timestamp - 1（逐渐变老）
   // 3. 选择替换时：找timestamp最小的（最老）
   private val t1_compareMatrix   = CompareMatrix(t1_ageVec)
-  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B)).asUInt & ~writeBufferMask
-  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty)).asUInt & ~writeBufferMask
-  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty)).asUInt
+// 修复：明确创建Bool类型的Vec，避免宽度推导问题
+private val t1_invalidEntryVec = VecInit(statusEntries.map(e => !e.valid))
+private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty))
+private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty))
 
-  private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(VecInit(t1_invalidEntryVec.asBools))
-  private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_cleanEntryVec.asBools))
-  private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_dirtyEntryVec.asBools))
-  private val t1_invalidId = OHToUInt(t1_invalidEntryOH)
-  private val t1_cleanId = OHToUInt(t1_cleanEntryOH)
-  private val t1_dirtyId = OHToUInt(t1_dirtyEntryOH)
-  private val t1_hasInValid = t1_invalidEntryVec.orR
-  private val t1_hasInClean = t1_cleanEntryVec.orR
-  private val t1_hasInDirty = t1_dirtyEntryVec.orR
+// 创建应用了掩码的版本
+private val t1_invalidEntryVecMasked = Wire(Vec(numEntry, Bool()))
+private val t1_cleanEntryVecMasked   = Wire(Vec(numEntry, Bool()))
+private val t1_dirtyEntryVecMasked   = Wire(Vec(numEntry, Bool()))
+
+for (i <- 0 until numEntry) {
+  t1_invalidEntryVecMasked(i) := t1_invalidEntryVec(i) && !writeBufferMask(i)
+  t1_cleanEntryVecMasked(i)   := t1_cleanEntryVec(i) && !writeBufferMask(i)
+  t1_dirtyEntryVecMasked(i)   := t1_dirtyEntryVec(i) || writeBufferMask(i)
+}
+
+private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(t1_invalidEntryVecMasked)
+private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(t1_cleanEntryVecMasked)
+private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(t1_dirtyEntryVecMasked)
+
+private val t1_invalidId = OHToUInt(t1_invalidEntryOH)
+private val t1_cleanId = OHToUInt(t1_cleanEntryOH)
+private val t1_dirtyId = OHToUInt(t1_dirtyEntryOH)
+private val t1_hasInValid = t1_invalidEntryVecMasked.reduce(_ || _)
+private val t1_hasInClean = t1_cleanEntryVecMasked.reduce(_ || _)
+private val t1_hasInDirty = t1_dirtyEntryVec.reduce(_ || _)
 
   when(io.writeSuccess || !(statusEntries(deqPtr).dirty)) {
     deqPtr := t1_dirtyId
@@ -287,5 +311,9 @@ class BypassShadowBuffer(
   for (i <- 0 until 8) {
     XSPerfAccumulate(f"buffer_writeback_age${i}", io.tryWrite.valid && statusEntries(deqPtr).age === i.U)
   }
-  XSPerfAccumulate("need_bypass", t1_needBypass && t1_hasWrite)
+  private val t1_real_needBypass = needBypass
+  XSPerfAccumulate("need_bypass", t1_real_needBypass)
+  private val error_multihit = (PopCount(t0_entryHitOH) > 1.U) && t0_fire
+  dontTouch(error_multihit)
+  XSPerfAccumulate("error_multihit", error_multihit)
 }

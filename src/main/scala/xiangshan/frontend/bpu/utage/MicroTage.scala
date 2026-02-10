@@ -265,7 +265,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val t1_trainStartPc       = RegEnable(t0_trainData.startPc, t0_fire)
 
   for (i <- 0 until NumTables) {
-    tables(i).train.t0_trainIndex := t0_trainIdx(i)
+    tables(i).train.t0_trainIndex.valid := t0_fire
+    tables(i).train.t0_trainIndex.bits := t0_trainIdx(i)
     val t1_trainTag = computeHashTag(t1_trainStartPc, t1_foldedPathHistForTrain, TableInfos, i)
     for (j <- 0 until NumWays) {
       val predCfiPosition = t1_trainRead(i)(j).cfiPosition
