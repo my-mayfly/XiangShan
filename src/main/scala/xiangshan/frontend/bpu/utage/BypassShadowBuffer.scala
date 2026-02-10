@@ -20,6 +20,8 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import scala.math.min
 import utility.XSPerfAccumulate
+import utility.CircularQueuePtr
+import utility.HasCircularQueuePtrHelper
 import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.FoldedHistoryInfo
 import xiangshan.frontend.bpu.SaturateCounter
@@ -30,10 +32,10 @@ import yunsuan.vector.alu.VIntFixpTable.table
 class BypassShadowBuffer(
     val numSets:  Int,
     val numWay:   Int,
-    val numEntry: Int = 16,  // 固定为16，保持最近16项
+    val numEntry: Int = 16,
     val tableId:  Int,
     val NumBanks: Int = 4
-)(implicit p: Parameters) extends MicroTageModule with Helpers {
+)(implicit p: Parameters) extends MicroTageModule with HasCircularQueuePtrHelper with Helpers {
   class BypassBufferIO extends MicroTageBundle {
     class Req extends MicroTageBundle {
       val readIndex: UInt = UInt(log2Ceil(MaxNumSets).W)
@@ -67,12 +69,12 @@ class BypassShadowBuffer(
     val age:       UInt           = UInt(log2Ceil(numEntry).W)
     val dirty:     Bool           = Bool()
   }
+  class BufferPtr(implicit p: Parameters) extends CircularQueuePtr[BufferPtr](numEntry) {}
 
   private val entries       = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new BufferEntry))))
   private val statusEntries = RegInit(VecInit(Seq.fill(numEntry)(0.U.asTypeOf(new ReplaceItem))))
-  private val enqPtr = RegInit(0.U(log2Ceil(numEntry).W)) // Next available position
-  private val enqMask = RegInit(0.U(numEntry.W))
-  private val deqPtr = RegInit(0.U(log2Ceil(numEntry).W)) // Position ready for write-back
+  private val enqPtr = RegInit(0.U.asTypeOf(new BufferPtr)) // Next available position
+  private val deqPtr = RegInit(0.U.asTypeOf(new BufferPtr)) // Position ready for write-back
 
   // Banked useful registers
   private val usefulEntries = RegInit(VecInit.tabulate(NumBanks) { bankIdx =>
@@ -95,7 +97,8 @@ class BypassShadowBuffer(
   io.resp.readEntries := a1_microTageEntryVec
 
   // Training logic - stage 0
-  private val t0_trainIndex    = io.train.t0_trainIndex
+  private val t0_fire          = io.train.t0_trainIndex.valid
+  private val t0_trainIndex    = io.train.t0_trainIndex.bits
   private val t0_entryHitOH    = Wire(Vec(numEntry, Bool()))
   t0_entryHitOH  := entries.map(e => (e.index === t0_trainIndex) && e.valid)
   private val t0_hasHit  = t0_entryHitOH.reduce(_ || _)
@@ -106,7 +109,7 @@ class BypassShadowBuffer(
   private val t0_bankIdx         = getBankId(t0_trainIndex, NumBanks)
   private val t0_bankOffset      = getBankInnerIndex(t0_trainIndex, NumBanks, numSets)
   private val t0_trainReadUseful = usefulEntries(t0_bankIdx)(t0_bankOffset)
-  private val t0_hitBufferId     = OHToUInt(t0_entryHitOH)
+  private val t0_cleanId         = OHToUInt(t0_entryHitOH)
   private val t0_trainReadEntries = t0_microTageEntryVec
 
   for (way <- 0 until numWay) {
@@ -118,17 +121,18 @@ class BypassShadowBuffer(
   }
 
   // ===================== Bypss 允许写入错误的数据，但绝不允许出现连个readIndex 相同的项 =====================
-  private val t1_trainIndex       = RegNext(t0_trainIndex, 0.U(log2Ceil(MaxNumSets).W))
-  private val needBypass = (t1_trainIndex === t0_trainIndex)
-  private val t1_bufferWriteId = Wire(UInt(log2Ceil(numEntry).W))
-  private val t1_bypassId   = RegNext(t1_bufferWriteId)
-  private val t1_needBypass = RegNext(needBypass, false.B)
-  private val t1_hasHit           = RegNext(t0_hasHit, false.B)
-  private val t1_microTageHitVec  = RegNext(t0_microTageHitVec)
-  private val t1_hitBufferId      = RegNext(t0_hitBufferId)
-  private val t1_trainReadEntries = RegNext(t0_trainReadEntries)
-  t1_bufferWriteId    := Mux(t1_needBypass, t1_bypassId, Mux(t1_hasHit, t1_hitBufferId, enqPtr))
+  private val needBypass        = WireDefault(false.B)
+  private val bypasscleanId     = WireDefault(0.U(log2Ceil(numEntry).W))
+  private val bypassHasHit      = Wire(Bool())
+  private val bypassHitVec      = Wire(Vec(numWay, Bool()))
+  private val bypassReadEntries = Wire(Vec(numWay, new MicroTageEntry))
 
+  private val t1_fire             = RegNext(t0_fire, false.B)
+  private val t1_trainIndex       = RegNext(t0_trainIndex, 0.U(log2Ceil(MaxNumSets).W))
+  private val t1_hasHit           = RegNext(Mux(needBypass, bypassHasHit, t0_hasHit), false.B)
+  private val t1_microTageHitVec  = RegNext(Mux(needBypass, bypassHitVec, t0_microTageHitVec))
+  private val t1_trainReadEntries = RegNext(Mux(needBypass, bypassReadEntries, t0_trainReadEntries))
+  private val t1_cleanId          = RegNext(Mux(needBypass, bypasscleanId, t0_cleanId))
   // Access useful registers for t1 stage
   private val t1_bankIdx         = getBankId(t1_trainIndex, NumBanks)
   private val t1_bankOffset      = getBankInnerIndex(t1_trainIndex, NumBanks, numSets)
@@ -199,93 +203,56 @@ class BypassShadowBuffer(
   newBufferEntry.valid       := true.B
   newBufferEntry.index       := t1_trainIndex
   for(i <- 0 until numWay) {
-    newBufferEntry.entryData(i).valid := writeBufferValid(i) || entries(t1_bufferWriteId).entryData(i).valid
-    newBufferEntry.entryData(i).bits := Mux(writeBufferValid(i), newMicroTageEntryVec(i), entries(t1_bufferWriteId).entryData(i).bits)
+    newBufferEntry.entryData(i).valid := writeBufferValid(i)
+    newBufferEntry.entryData(i).bits := newMicroTageEntryVec(i)
   }
 
   private val t1_hasWrite = writeBufferValid.reduce(_||_)
   when(t1_hasWrite) {
-    entries(t1_bufferWriteId) := newBufferEntry
+    entries(enqPtr.value) := newBufferEntry
+    enqPtr := enqPtr + 1.U
   }
 
-  private val t1_ageVec = Wire(Vec(numEntry, UInt(log2Ceil(numEntry).W)))
-  t1_ageVec := statusEntries.map(e => e.age)
-  private val writeBufferMask = UIntToOH(t1_bufferWriteId)
+  needBypass := (t1_trainIndex === t0_trainIndex) && t1_hasWrite
+  bypassHasHit  := true.B
+  bypasscleanId := enqPtr.value
+  bypassHitVec  := newBufferEntry.entryData.map{e =>e.valid}
+  bypassReadEntries := newBufferEntry.entryData.map{e => e.bits}
 
-  // 更新规则：
-  // 1. 被访问的项：timestamp = 15（最年轻）
-  // 2. 未被访问的项：每个周期 timestamp = timestamp - 1（逐渐变老）
-  // 3. 选择替换时：找timestamp最小的（最老）
-  private val t1_compareMatrix   = CompareMatrix(t1_ageVec)
-  private val t1_invalidEntryVec = VecInit(statusEntries.map(e => e.valid === false.B)).asUInt & ~writeBufferMask
-  private val t1_cleanEntryVec   = VecInit(statusEntries.map(e => e.valid && !e.dirty)).asUInt & ~writeBufferMask
-  private val t1_dirtyEntryVec   = VecInit(statusEntries.map(e => e.valid && e.dirty)).asUInt
-
-  private val t1_invalidEntryOH  = t1_compareMatrix.getLeastElementOH(VecInit(t1_invalidEntryVec.asBools))
-  private val t1_cleanEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_cleanEntryVec.asBools))
-  private val t1_dirtyEntryOH    = t1_compareMatrix.getLeastElementOH(VecInit(t1_dirtyEntryVec.asBools))
-  private val t1_invalidId = OHToUInt(t1_invalidEntryOH)
-  private val t1_cleanId = OHToUInt(t1_cleanEntryOH)
-  private val t1_dirtyId = OHToUInt(t1_dirtyEntryOH)
-  private val t1_hasInValid = t1_invalidEntryVec.orR
-  private val t1_hasInClean = t1_cleanEntryVec.orR
-  private val t1_hasInDirty = t1_dirtyEntryVec.orR
-
-  when(io.writeSuccess || !(statusEntries(deqPtr).dirty)) {
-    deqPtr := t1_dirtyId
+  when(io.writeSuccess || !(statusEntries(deqPtr.value).dirty)) {
+    deqPtr := deqPtr + 1.U
   }
 
-  private val nexEnqPtr = Mux(t1_hasInValid, t1_invalidId, Mux(t1_hasInClean, t1_cleanId, t1_dirtyId))
-  when(t1_hasWrite && (!t1_hasHit || (enqPtr === t1_bufferWriteId))) {
-    enqPtr := nexEnqPtr
-    enqMask := UIntToOH(nexEnqPtr)
+  when(io.writeSuccess) {
+    statusEntries(deqPtr.value).dirty := false.B
   }
 
-  when(io.writeSuccess || t1_hasWrite) {
-    for (i <- 0 until numEntry) {
-      statusEntries(i).valid := Mux(i.U === t1_bufferWriteId && t1_hasWrite, true.B, statusEntries(i).valid)
-      statusEntries(i).dirty := Mux(
-        i.U === t1_bufferWriteId && t1_hasWrite,
-        true.B,
-        Mux(i.U === deqPtr && io.writeSuccess, false.B, statusEntries(i).dirty)
-      )
-      statusEntries(i).age   :=
-        Mux(
-          t1_hasWrite,
-          Mux(i.U === t1_bufferWriteId, (numEntry - 1).U, Mux(statusEntries(i).age === 0.U, 0.U, statusEntries(i).age - 1.U)),
-          statusEntries(i).age
-        )
-    }
+  when(t1_hasWrite) {
+    statusEntries(enqPtr.value).valid := true.B
+    statusEntries(enqPtr.value).dirty := true.B
   }
 
-  // Write-back control logic
-  private val bufferDirtyVec = VecInit(statusEntries.map{e => e.dirty && e.valid})
-  private val bufferCounter = RegNext(PopCount(bufferDirtyVec), 0.U(log2Ceil(numEntry).W))
-  private val forceWrite    = bufferCounter >= (numEntry - numWay).U
-
-  io.tryWrite.valid           := statusEntries(deqPtr).valid && statusEntries(deqPtr).dirty
-  io.tryWrite.bits.writeIndex := entries(deqPtr).index
-  io.tryWrite.bits.writeData  := entries(deqPtr).entryData.map(_.bits)
-  io.tryWrite.bits.forceWrite := forceWrite && statusEntries(deqPtr).valid && statusEntries(deqPtr).dirty
-  io.tryWrite.bits.wMask      := VecInit(entries(deqPtr).entryData.map(_.valid)).asUInt
-
-// ==========================================================================
-// === Buffer性能诊断计数器 ===
-// ==========================================================================
-  // 1. Buffer命中率统计
-  XSPerfAccumulate("buffer_hit_total", a1_hasHit)
-
-  private val writeNew = t1_hasWrite && (!t1_hasHit || (enqPtr === t1_bufferWriteId))
-
-  XSPerfAccumulate("buffer_replace_total", writeNew)
-  XSPerfAccumulate("buffer_replace_invalid", writeNew && t1_hasInValid)
-  XSPerfAccumulate("buffer_replace_clean", writeNew && !t1_hasInValid && t1_hasInClean)
-  XSPerfAccumulate("buffer_replace_dirty", writeNew && !t1_hasInValid && !t1_hasInClean)
-
-  // 3. Buffer写回分析
-  XSPerfAccumulate("buffer_writeback_total", io.tryWrite.valid)
-  for (i <- 0 until 8) {
-    XSPerfAccumulate(f"buffer_writeback_age${i}", io.tryWrite.valid && statusEntries(deqPtr).age === i.U)
+  when(t1_hasWrite && t1_hasHit) {
+    statusEntries(enqPtr.value).dirty := false.B
   }
-  XSPerfAccumulate("need_bypass", t1_needBypass && t1_hasWrite)
+
+  private val forceWrite = distanceBetween(enqPtr, deqPtr) > (numEntry - 2).U
+  io.tryWrite.valid           := statusEntries(deqPtr.value).valid && statusEntries(deqPtr.value).dirty
+  io.tryWrite.bits.writeIndex := entries(deqPtr.value).index
+  io.tryWrite.bits.writeData  := entries(deqPtr.value).entryData.map(_.bits)
+  io.tryWrite.bits.forceWrite := forceWrite && statusEntries(deqPtr.value).valid && statusEntries(deqPtr.value).dirty
+  io.tryWrite.bits.wMask      := VecInit(entries(deqPtr.value).entryData.map(_.valid)).asUInt
+
+  // ==========================================================================
+  // Buffer Performance Diagnostic Counters
+  // ==========================================================================
+  // 1. Replacement statistics
+  XSPerfAccumulate("buffer_write_total", t1_hasWrite)
+  XSPerfAccumulate("buffer_train_hit_total", t1_hasWrite && t1_hasHit)
+
+  // 2. Bypass and error statistics
+  XSPerfAccumulate("need_bypass", needBypass)
+  private val multihit = (PopCount(t0_entryHitOH) > 1.U) && t0_fire
+  dontTouch(multihit)
+  XSPerfAccumulate("error_multihit", multihit)
 }

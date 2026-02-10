@@ -140,7 +140,7 @@ class MicroTageTrainRead(implicit p: Parameters) extends MicroTageBundle {
 }
 
 class MicroTageTrain(numWay: Int, numSets: Int)(implicit p: Parameters) extends MicroTageBundle {
-  val t0_trainIndex: UInt                            = Input(UInt(log2Ceil(numSets).W))
+  val t0_trainIndex: Valid[UInt]                     = Input(Valid(UInt(log2Ceil(numSets).W)))
   val t0_read:       Vec[MicroTageTrainRead]         = Output(Vec(numWay, new MicroTageTrainRead))
   val t1_tag:        UInt                            = Input(UInt(MaxTagLen.W))
   val t1_update:     Vec[Valid[MicroTageUpdateInfo]] = Input(Vec(numWay, Valid(new MicroTageUpdateInfo)))
