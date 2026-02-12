@@ -42,6 +42,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     val foldedPathHistForTrain: PhrAllFoldedHistories = Input(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
     val prediction:             MicroTagePrediction   = Output(new MicroTagePrediction)
     val meta:                   Valid[MicroTageMeta]  = Output(Valid(new MicroTageMeta))
+    val abtbPosVec:     Vec[UInt]                  = Input(Vec(NumAheadBtbPredictionEntries, UInt(CfiPositionWidth.W)))
     val abtbPrediction: Vec[Valid[AheadBtbResult]] = Input(Vec(NumAheadBtbPredictionEntries, Valid(new AheadBtbResult)))
     val overrideValid:  Bool                       = Input(Bool())
     val redirectValid:  Bool                       = Input(Bool())
@@ -124,6 +125,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val a2_readIndex = RegEnable(Mux(overrideValid, a3_readIndex, a1_readIndex), a1_fire)
   private val a2_predRead =
     RegEnable(Mux(overrideValid, overridePredRead, a1_predRead), 0.U.asTypeOf(a1_predRead), a1_fire)
+  private val a2_fromAbtbPos     = RegEnable(io.abtbPosVec, a1_fire)
   private val a2_abtbHitVec      = Wire(Vec(NumAheadBtbPredictionEntries, Bool()))
   private val a2_abtbTakenVec    = Wire(Vec(NumAheadBtbPredictionEntries, Bool()))
   private val a2_abtbUseTableId  = Wire(Vec(NumAheadBtbPredictionEntries, UInt(log2Ceil(NumTables).W)))
@@ -141,7 +143,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       val wayHitVec = Wire(Vec(NumWays, Bool()))
       for (k <- 0 until NumWays) {
         wayHitVec(k) := (a2_predRead(j)(k).valid && a2_predRead(j)(k).tagHit) &&
-          a2_predRead(j)(k).cfiPosition === io.abtbPrediction(i).bits.cfiPosition
+          a2_predRead(j)(k).cfiPosition === a2_fromAbtbPos(i) // io.abtbPrediction(i).bits.cfiPosition
       }
       tableHitVec(j) := wayHitVec.asUInt.orR
       val priorityWayHitVec = PriorityEncoderOH(wayHitVec)
@@ -174,7 +176,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     s1_predMeta.bits.abtbResult(i).predTaken        := a2_abtbTakenVec(i)
     s1_predMeta.bits.abtbResult(i).tableId          := a2_abtbUseTableId(i)
     s1_predMeta.bits.abtbResult(i).wayId            := a2_abtbUseWayId(i)
-    s1_predMeta.bits.abtbResult(i).cfiPosition      := io.abtbPrediction(i).bits.cfiPosition
+    s1_predMeta.bits.abtbResult(i).cfiPosition      := a2_fromAbtbPos(i) // io.abtbPrediction(i).bits.cfiPosition
     s1_predMeta.bits.abtbResult(i).baseIsStrongBias := io.abtbPrediction(i).bits.isStrongBias
     s1_predMeta.bits.abtbResult(i).takenCtr         := a2_abtbTakenCtrVec(i)
   }
