@@ -66,13 +66,14 @@ class AbtbResult(implicit p: Parameters) extends MicroTageBundle {
 }
 
 class MicroTageTablePred(implicit p: Parameters) extends MicroTageBundle {
-  val taken:       Bool            = Bool()
-  val tag:         UInt            = UInt(MaxTagLen.W)
-  val cfiPosition: UInt            = UInt(CfiPositionWidth.W)
-  val posHit:      Bool            = Bool()
-  val tagHit:      Bool            = Bool()
-  val valid:       Bool            = Bool()
-  val takenCtr:    SaturateCounter = TakenCounter()
+  val taken:       Bool = Bool()
+  val tag:         UInt = UInt(MaxTagLen.W)
+  val cfiPosition: UInt = UInt(CfiPositionWidth.W)
+  val posHit:      Bool = Bool()
+  // Boost TagHit drive strength for redundancy.
+  val tagHitDup: Vec[Bool]       = Vec(NumAheadBtbPredictionEntries, Bool())
+  val valid:     Bool            = Bool()
+  val takenCtr:  SaturateCounter = TakenCounter()
 }
 
 class MicroTageTrainResult(implicit p: Parameters) extends MicroTageBundle {

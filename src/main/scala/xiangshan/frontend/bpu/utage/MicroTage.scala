@@ -118,7 +118,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       a1_predRead(i)(j).valid := a1_predEntries(i)(j).valid
       a1_predRead(i)(j).tag   := a1_predEntries(i)(j).tag
       // Timing might be tight, consider using older PHR.
-      a1_predRead(i)(j).tagHit      := a1_predEntries(i)(j).tag === predTag
+      a1_predRead(i)(j).tagHitDup.map(_ := a1_predEntries(i)(j).tag === predTag)
       a1_predRead(i)(j).cfiPosition := a1_predEntries(i)(j).cfiPosition
       a1_predRead(i)(j).posHit      := false.B
       a1_predRead(i)(j).takenCtr    := a1_predEntries(i)(j).takenCtr
@@ -143,10 +143,10 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   for (i <- 0 until NumTables) {
     val predTag = computeHashTag(a1_startPc, io.overridePathHist, TableInfos, i)
     for (j <- 0 until NumWays) {
-      overridePredRead(i)(j).taken       := a3_predRead(i)(j).taken
-      overridePredRead(i)(j).valid       := a3_predRead(i)(j).valid
-      overridePredRead(i)(j).tag         := a3_predRead(i)(j).tag
-      overridePredRead(i)(j).tagHit      := a3_predRead(i)(j).tag === predTag
+      overridePredRead(i)(j).taken := a3_predRead(i)(j).taken
+      overridePredRead(i)(j).valid := a3_predRead(i)(j).valid
+      overridePredRead(i)(j).tag   := a3_predRead(i)(j).tag
+      overridePredRead(i)(j).tagHitDup.map(_ := a3_predRead(i)(j).tag === predTag)
       overridePredRead(i)(j).cfiPosition := a3_predRead(i)(j).cfiPosition
       overridePredRead(i)(j).posHit      := false.B
       overridePredRead(i)(j).takenCtr    := a3_predRead(i)(j).takenCtr
@@ -176,7 +176,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     for (j <- 0 until NumTables) {
       val wayHitVec = Wire(Vec(NumWays, Bool()))
       for (k <- 0 until NumWays) {
-        wayHitVec(k) := a2_predRead(j)(k).tagHit && a2_posHitVec(i)(j)(k)
+        wayHitVec(k) := a2_predRead(j)(k).tagHitDup(i) && a2_posHitVec(i)(j)(k)
       }
       tableHitVec(j) := wayHitVec.asUInt.orR
       val priorityWayHitVec = PriorityEncoderOH(wayHitVec)
