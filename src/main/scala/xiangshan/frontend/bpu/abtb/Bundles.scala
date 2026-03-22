@@ -74,10 +74,12 @@ class AheadBtbMetaEntry(implicit p: Parameters) extends AheadBtbBundle {
 }
 
 class AheadBtbMeta(implicit p: Parameters) extends AheadBtbBundle {
-  val valid:    Bool                   = Bool()
-  val setIdx:   UInt                   = UInt(SetIdxWidth.W)
-  val bankMask: UInt                   = UInt(NumBanks.W)
-  val entries:  Vec[AheadBtbMetaEntry] = Vec(NumWays, new AheadBtbMetaEntry())
+  val valid:      Bool                   = Bool()
+  val setIdx:     UInt                   = UInt(SetIdxWidth.W)
+  val bankMask:   UInt                   = UInt(NumBanks.W)
+  val entries:    Vec[AheadBtbMetaEntry] = Vec(NumWays, new AheadBtbMetaEntry())
+  val prevPartPc: UInt                   = UInt(4.W)
+  val simpleHist: UInt                   = UInt(4.W)
 }
 
 class AheadBtbEntry(implicit p: Parameters) extends AheadBtbBundle {

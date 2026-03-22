@@ -30,9 +30,13 @@ import xiangshan.frontend.bpu.Prediction
  */
 class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   class AheadBtbIO(implicit p: Parameters) extends BasePredictorIO with HasFastTrainIO {
-    val redirectValid: Bool                       = Input(Bool())
-    val overrideValid: Bool                       = Input(Bool())
-    val prediction:    Vec[Valid[Prediction]]     = Output(Vec(NumAheadBtbPredictionEntries, Valid(new Prediction)))
+    val redirectValid:      Bool                   = Input(Bool())
+    val redirectPrevPartPc: UInt                   = Input(UInt(4.W))
+    val redirectSimpleHist: UInt                   = Input(UInt(4.W))
+    val overrideValid:      Bool                   = Input(Bool())
+    val overridePrevPartPc: UInt                   = Input(UInt(4.W))
+    val overrideSimpleHist: UInt                   = Input(UInt(4.W))
+    val prediction:         Vec[Valid[Prediction]] = Output(Vec(NumAheadBtbPredictionEntries, Valid(new Prediction)))
     val abtbResult:    Vec[Valid[AheadBtbResult]] = Output(Vec(NumAheadBtbPredictionEntries, Valid(new AheadBtbResult)))
     val abtbResultPos: Vec[UInt]                  = Output(Vec(NumAheadBtbPredictionEntries, UInt(CfiPositionWidth.W)))
     val abtbPos:       Vec[UInt]                  = Output(Vec(NumAheadBtbPredictionEntries, UInt(CfiPositionWidth.W)))
@@ -78,10 +82,14 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s1_valid = RegInit(false.B)
   private val s2_valid = RegInit(false.B)
 
-  private val predictReqValid = io.stageCtrl.s0_fire
-  private val predictionSent  = io.stageCtrl.s1_fire
-  private val redirectValid   = io.redirectValid
-  private val overrideValid   = io.overrideValid
+  private val predictReqValid    = io.stageCtrl.s0_fire
+  private val predictionSent     = io.stageCtrl.s1_fire
+  private val redirectValid      = io.redirectValid
+  private val redirectPrevPartPc = io.redirectPrevPartPc
+  private val redirectSimpleHist = io.redirectSimpleHist
+  private val overrideValid      = io.overrideValid
+  private val overridePrevPartPc = io.overridePrevPartPc
+  private val overrideSimpleHist = io.overrideSimpleHist
 
   s0_fire := io.enable && predictReqValid
   s1_fire := io.enable && s1_valid && s2_ready && predictReqValid
@@ -108,9 +116,26 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
      -------------------------------------------------------------------------------------------------------------- */
 
   private val s0_previousStartPc = io.startPc
-
-  private val s0_setIdx   = getSetIndex(s0_previousStartPc)
-  private val s0_bankIdx  = getBankIndex(s0_previousStartPc)
+  private val s0_pprevPartPc     = RegEnable(s0_previousStartPc(7, 4), s0_fire)
+  private val s0_realPPrevPartPc = MuxCase(
+    s0_pprevPartPc,
+    Seq(
+      redirectValid -> redirectPrevPartPc,
+      overrideValid -> overridePrevPartPc
+    )
+  )
+  private val s0_simpleHist = RegEnable(s0_realPPrevPartPc ^ s0_previousStartPc(5, 2), s0_fire)
+  private val s0_realSimpleHist = MuxCase(
+    s0_simpleHist,
+    Seq(
+      redirectValid -> redirectSimpleHist,
+      overrideValid -> overrideSimpleHist
+    )
+  )
+  private val s0_hashIndex = Cat(s0_realSimpleHist(3, 0), 0.U(4.W)) ^ s0_previousStartPc(8, 1)
+  private val s0_setIdx    = s0_hashIndex(log2Ceil(NumSets * NumBanks) - 1, log2Ceil(NumBanks))
+  // getSetIndex(s0_hashIndex)
+  private val s0_bankIdx  = s0_hashIndex(log2Ceil(NumBanks) - 1, 0) // getBankIndex(s0_hashIndex)
   private val s0_bankMask = UIntToOH(s0_bankIdx)
 
   banks.zipWithIndex.foreach { case (b, i) =>
@@ -130,7 +155,10 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s1_bankIdx  = RegEnable(s0_bankIdx, s0_fire)
   private val s1_bankMask = RegEnable(s0_bankMask, s0_fire)
 
-  private val s1_entries = Mux1H(s1_bankMask, banks.map(_.io.readResp.entries))
+  private val s1_entries    = Mux1H(s1_bankMask, banks.map(_.io.readResp.entries))
+  private val s1_ctrVec     = takenCounter(s1_bankIdx)(s1_setIdx)
+  private val s1_ctrResult  = VecInit(s1_ctrVec.map(_.isPositive))
+  private val s1_strongBias = VecInit(s1_ctrVec.map(_.isSaturate))
 
   /* --------------------------------------------------------------------------------------------------------------
      predict pipeline stage 2 / 3
@@ -142,34 +170,47 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
      - stage 3 is only for fast prediction when override is valid
      -------------------------------------------------------------------------------------------------------------- */
 
-  private val s3_setIdx   = RegInit(0.U.asTypeOf(s1_setIdx))
-  private val s3_bankIdx  = RegInit(0.U.asTypeOf(s1_bankIdx))
-  private val s3_bankMask = RegInit(0.U.asTypeOf(s1_bankMask))
-  private val s3_entries  = RegInit(0.U.asTypeOf(s1_entries))
-  private val s3_startPc  = RegInit(0.U.asTypeOf(s1_startPc))
+  private val s3_setIdx     = RegInit(0.U.asTypeOf(s1_setIdx))
+  private val s3_bankIdx    = RegInit(0.U.asTypeOf(s1_bankIdx))
+  private val s3_bankMask   = RegInit(0.U.asTypeOf(s1_bankMask))
+  private val s3_entries    = RegInit(0.U.asTypeOf(s1_entries))
+  private val s3_startPc    = RegInit(0.U.asTypeOf(s1_startPc))
+  private val s3_ctrResult  = RegInit(VecInit.fill(NumWays)(false.B))
+  private val s3_strongBias = RegInit(VecInit.fill(NumWays)(false.B))
+  private val s3_prevPartPc = RegInit(0.U(4.W))
+  private val s3_simpleHist = RegInit(0.U(4.W))
 
   private val s1_realEntries = Mux(overrideValid, s3_entries, s1_entries)
+  private val s1_tag         = getTag(s1_startPc)
+  private val s1_realHitMask = VecInit(s1_realEntries.map(entry => entry.valid && entry.tag === s1_tag))
   private val s2_setIdx      = RegEnable(Mux(overrideValid, s3_setIdx, s1_setIdx), s1_fire)
   private val s2_bankIdx     = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
   private val s2_bankMask    = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
+  private val s2_ctrResult   = RegEnable(Mux(overrideValid, s3_ctrResult, s1_ctrResult), s1_fire)
+  private val s2_strongBias  = RegEnable(Mux(overrideValid, s3_strongBias, s1_strongBias), s1_fire)
   private val s2_entries     = RegEnable(s1_realEntries, s1_fire)
   private val s2_startPc     = RegEnable(s1_startPc, s1_fire)
+  private val s2_hitMask     = RegEnable(s1_realHitMask, s1_fire)
+  private val s2_prevPartPc  = RegEnable(s1_startPc(7, 4), s1_fire)
+  private val s2_simpleHist =
+    RegEnable(Mux(overrideValid, s3_prevPartPc ^ s1_startPc(5, 2), s2_prevPartPc ^ s1_startPc(5, 2)), s1_fire)
 
   when(s2_fire) {
-    s3_setIdx   := s2_setIdx
-    s3_bankIdx  := s2_bankIdx
-    s3_bankMask := s2_bankMask
-    s3_entries  := s2_entries
-    s3_startPc  := s2_startPc
+    s3_setIdx     := s2_setIdx
+    s3_bankIdx    := s2_bankIdx
+    s3_bankMask   := s2_bankMask
+    s3_entries    := s2_entries
+    s3_startPc    := s2_startPc
+    s3_ctrResult  := s2_ctrResult
+    s3_strongBias := s2_strongBias
+    s3_prevPartPc := s2_prevPartPc
+    s3_simpleHist := s2_simpleHist
   }
 
-  private val s2_ctrResult  = takenCounter(s2_bankIdx)(s2_setIdx).map(_.isPositive)
-  private val s2_strongBias = takenCounter(s2_bankIdx)(s2_setIdx).map(_.isSaturate)
-
-  private val s2_tag = getTag(s2_startPc)
-  dontTouch(s2_tag)
-  private val s2_hitMask = s2_entries.map(entry => entry.valid && entry.tag === s2_tag)
-  private val s2_hit     = s2_hitMask.reduce(_ || _)
+  // private val s2_tag = getTag(s2_startPc)
+  // dontTouch(s2_tag)
+  // private val s2_hitMask = s2_entries.map(entry => entry.valid && entry.tag === s2_tag)
+  private val s2_hit = s2_hitMask.reduce(_ || _)
 
   // When detect multi-hit, we need to invalidate one entry.
   private val (s2_multiHit, s2_multiHitWayIdx) = detectMultiHit(s2_hitMask, s2_entries.map(_.position))
@@ -197,9 +238,11 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
     pos := s1_realEntries(i).position
   }
 
-  io.meta.valid    := s2_valid
-  io.meta.setIdx   := s2_setIdx
-  io.meta.bankMask := s2_bankMask
+  io.meta.valid      := s2_valid
+  io.meta.setIdx     := s2_setIdx
+  io.meta.bankMask   := s2_bankMask
+  io.meta.prevPartPc := s2_prevPartPc
+  io.meta.simpleHist := s2_simpleHist
   io.meta.entries.zipWithIndex.foreach { case (e, i) =>
     e.hit             := s2_hitMask(i)
     e.attribute       := s2_entries(i).attribute
