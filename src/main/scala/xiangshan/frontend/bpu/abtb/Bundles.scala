@@ -39,19 +39,16 @@ class BankReadResp(implicit p: Parameters) extends AheadBtbBundle {
 }
 
 class BankWriteReq(implicit p: Parameters) extends WriteReqBundle with HasAheadBtbParameters {
-  val needResetCtr: Bool          = Bool()
-  val setIdx:       UInt          = UInt(SetIdxWidth.W)
-  val wayIdx:       UInt          = UInt(WayIdxWidth.W)
-  val entry:        AheadBtbEntry = new AheadBtbEntry
-
-  override def tag: Option[UInt] = Some(entry.tag)
+  val setIdx:    UInt               = UInt(SetIdxWidth.W)
+  val entryData: Vec[AheadBtbEntry] = Vec(NumWays, new AheadBtbEntry)
+  val wayMask:   UInt               = UInt(NumWays.W)
 }
 
-class BankWriteResp(implicit p: Parameters) extends AheadBtbBundle {
-  val needResetCtr: Bool = Bool()
-  val setIdx:       UInt = UInt(SetIdxWidth.W)
-  val wayIdx:       UInt = UInt(WayIdxWidth.W)
-}
+// class BankWriteResp(implicit p: Parameters) extends AheadBtbBundle {
+//   val needResetCtr: Bool = Bool()
+//   val setIdx:       UInt = UInt(SetIdxWidth.W)
+//   val wayIdx:       UInt = UInt(WayIdxWidth.W)
+// }
 
 class ReplacerIO(implicit p: Parameters) extends AheadBtbBundle {
   val readValid:   Bool      = Input(Bool())
@@ -68,6 +65,8 @@ class ReplacerIO(implicit p: Parameters) extends AheadBtbBundle {
 
 class AheadBtbMetaEntry(implicit p: Parameters) extends AheadBtbBundle {
   val hit:             Bool            = Bool()
+  val valid:           Bool            = Bool()
+  val tag:             UInt            = UInt(TagWidth.W)
   val attribute:       BranchAttribute = new BranchAttribute
   val position:        UInt            = UInt(CfiPositionWidth.W)
   val targetLowerBits: UInt            = UInt(TargetLowerBitsWidth.W)
@@ -97,4 +96,16 @@ class AheadBtbResult(implicit p: Parameters) extends AheadBtbBundle {
   val cfiPosition:  UInt            = UInt(CfiPositionWidth.W)
   val attribute:    BranchAttribute = new BranchAttribute
   val isStrongBias: Bool            = Bool()
+}
+
+class AheadBufferData(implicit p: Parameters) extends AheadBtbBundle {
+  val trainIndex: UInt               = UInt(log2Ceil(NumEntries / NumBanks).W)
+  val trainData:  Vec[AheadBtbEntry] = Vec(NumAheadBtbPredictionEntries, new AheadBtbEntry)
+  val wayMask:    UInt               = UInt(NumWays.W)
+}
+
+class RedundantWriteCheck(implicit p: Parameters) extends AheadBtbBundle {
+  val tag:      UInt = UInt(TagWidth.W)
+  val position: UInt = UInt(CfiPositionWidth.W)
+  val index:    UInt = UInt(log2Ceil(NumEntries / NumBanks).W)
 }
