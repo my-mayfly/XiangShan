@@ -133,7 +133,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
       overrideValid -> overrideSimpleHist
     )
   )
-  private val s0_hashIndex = Cat(s0_realSimpleHist(3, 0), 0.U(4.W)) ^ s0_previousStartPc(8, 1)
+  private val s0_hashIndex = Cat(0.U(4.W), s0_realSimpleHist(3, 0)) ^ s0_previousStartPc(8, 1)
   private val s0_setIdx    = s0_hashIndex(log2Ceil(NumSets * NumBanks) - 1, log2Ceil(NumBanks))
   // getSetIndex(s0_hashIndex)
   private val s0_bankIdx  = s0_hashIndex(log2Ceil(NumBanks) - 1, 0) // getBankIndex(s0_hashIndex)
