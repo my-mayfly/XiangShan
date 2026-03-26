@@ -134,7 +134,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   )
   private val s0_hashIndex = Cat(0.U(4.W), s0_realSimpleHist(3, 0)) ^ s0_previousStartPc(8, 1)
   // private val s0_hashIndex = s0_previousStartPc(8, 1)
-  private val s0_setIdx    = s0_hashIndex(log2Ceil(NumSets * NumBanks) - 1, log2Ceil(NumBanks))
+  private val s0_setIdx = s0_hashIndex(log2Ceil(NumSets * NumBanks) - 1, log2Ceil(NumBanks))
   // getSetIndex(s0_hashIndex)
   private val s0_bankIdx  = s0_hashIndex(log2Ceil(NumBanks) - 1, 0) // getBankIndex(s0_hashIndex)
   private val s0_bankMask = UIntToOH(s0_bankIdx)
@@ -254,12 +254,6 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   // used for check abtb output
   io.debug_startPc := s2_startPc
 
-  replacers.zipWithIndex.foreach { case (r, i) =>
-    r.io.readValid   := s2_valid && s2_hit && s2_bankMask(i)
-    r.io.readSetIdx  := s2_setIdx
-    r.io.readWayMask := s2_hitMask
-  }
-
   /* --------------------------------------------------------------------------------------------------------------
      train pipeline stage 0
      - receive train request
@@ -365,6 +359,12 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
       b.io.writeReq.valid := false.B
       b.io.writeReq.bits  := 0.U.asTypeOf(new BankWriteReq)
     }
+  }
+
+  replacers.zipWithIndex.foreach { case (r, i) =>
+    r.io.readValid   := t1_fire && t1_bankMask(i)
+    r.io.readSetIdx  := t1_setIdx
+    r.io.readWayMask := t1_hitMaskOH
   }
 
   replacers.zip(banks).foreach { case (r, b) =>
