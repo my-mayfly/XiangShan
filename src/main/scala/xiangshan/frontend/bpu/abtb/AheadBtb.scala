@@ -156,10 +156,11 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s1_bankIdx  = RegEnable(s0_bankIdx, s0_fire)
   private val s1_bankMask = RegEnable(s0_bankMask, s0_fire)
 
-  private val s1_entries    = Mux1H(s1_bankMask, banks.map(_.io.readResp.entries))
-  private val s1_ctrVec     = takenCounter(s1_bankIdx)(s1_setIdx)
-  private val s1_ctrResult  = VecInit(s1_ctrVec.map(_.isPositive))
-  private val s1_strongBias = VecInit(s1_ctrVec.map(_.isSaturate))
+  private val s1_entries      = Mux1H(s1_bankMask, banks.map(_.io.readResp.entries))
+  private val s1_sramConflict = Mux1H(s1_bankMask, banks.map(_.io.sramConflict))
+  private val s1_ctrVec       = takenCounter(s1_bankIdx)(s1_setIdx)
+  private val s1_ctrResult    = VecInit(s1_ctrVec.map(_.isPositive))
+  private val s1_strongBias   = VecInit(s1_ctrVec.map(_.isSaturate))
 
   /* --------------------------------------------------------------------------------------------------------------
      predict pipeline stage 2 / 3
@@ -171,41 +172,44 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
      - stage 3 is only for fast prediction when override is valid
      -------------------------------------------------------------------------------------------------------------- */
 
-  private val s3_setIdx     = RegInit(0.U.asTypeOf(s1_setIdx))
-  private val s3_bankIdx    = RegInit(0.U.asTypeOf(s1_bankIdx))
-  private val s3_bankMask   = RegInit(0.U.asTypeOf(s1_bankMask))
-  private val s3_entries    = RegInit(0.U.asTypeOf(s1_entries))
-  private val s3_startPc    = RegInit(0.U.asTypeOf(s1_startPc))
-  private val s3_ctrResult  = RegInit(VecInit.fill(NumWays)(false.B))
-  private val s3_strongBias = RegInit(VecInit.fill(NumWays)(false.B))
-  private val s3_prevPartPc = RegInit(0.U(4.W))
-  private val s3_simpleHist = RegInit(0.U(4.W))
+  private val s3_setIdx       = RegInit(0.U.asTypeOf(s1_setIdx))
+  private val s3_bankIdx      = RegInit(0.U.asTypeOf(s1_bankIdx))
+  private val s3_bankMask     = RegInit(0.U.asTypeOf(s1_bankMask))
+  private val s3_entries      = RegInit(0.U.asTypeOf(s1_entries))
+  private val s3_startPc      = RegInit(0.U.asTypeOf(s1_startPc))
+  private val s3_ctrResult    = RegInit(VecInit.fill(NumWays)(false.B))
+  private val s3_strongBias   = RegInit(VecInit.fill(NumWays)(false.B))
+  private val s3_prevPartPc   = RegInit(0.U(4.W))
+  private val s3_simpleHist   = RegInit(0.U(4.W))
+  private val s3_sramConflict = RegInit(false.B)
 
-  private val s1_realEntries = Mux(overrideValid, s3_entries, s1_entries)
-  private val s1_tag         = getTag(s1_startPc)
-  private val s1_realHitMask = VecInit(s1_realEntries.map(entry => entry.valid && entry.tag === s1_tag))
-  private val s2_setIdx      = RegEnable(Mux(overrideValid, s3_setIdx, s1_setIdx), s1_fire)
-  private val s2_bankIdx     = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
-  private val s2_bankMask    = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
-  private val s2_ctrResult   = RegEnable(Mux(overrideValid, s3_ctrResult, s1_ctrResult), s1_fire)
-  private val s2_strongBias  = RegEnable(Mux(overrideValid, s3_strongBias, s1_strongBias), s1_fire)
-  private val s2_entries     = RegEnable(s1_realEntries, s1_fire)
-  private val s2_startPc     = RegEnable(s1_startPc, s1_fire)
-  private val s2_hitMask     = RegEnable(s1_realHitMask, s1_fire)
-  private val s2_prevPartPc  = RegEnable(s1_startPc(7, 4), s1_fire)
+  private val s1_realEntries  = Mux(overrideValid, s3_entries, s1_entries)
+  private val s1_tag          = getTag(s1_startPc)
+  private val s1_realHitMask  = VecInit(s1_realEntries.map(entry => entry.valid && entry.tag === s1_tag))
+  private val s2_setIdx       = RegEnable(Mux(overrideValid, s3_setIdx, s1_setIdx), s1_fire)
+  private val s2_bankIdx      = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
+  private val s2_bankMask     = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
+  private val s2_ctrResult    = RegEnable(Mux(overrideValid, s3_ctrResult, s1_ctrResult), s1_fire)
+  private val s2_strongBias   = RegEnable(Mux(overrideValid, s3_strongBias, s1_strongBias), s1_fire)
+  private val s2_entries      = RegEnable(s1_realEntries, s1_fire)
+  private val s2_startPc      = RegEnable(s1_startPc, s1_fire)
+  private val s2_hitMask      = RegEnable(s1_realHitMask, s1_fire)
+  private val s2_sramConflict = RegEnable(Mux(overrideValid, s3_sramConflict, s1_sramConflict), s1_fire)
+  private val s2_prevPartPc   = RegEnable(s1_startPc(7, 4), s1_fire)
   private val s2_simpleHist =
     RegEnable(Mux(overrideValid, s3_prevPartPc ^ s1_startPc(5, 2), s2_prevPartPc ^ s1_startPc(5, 2)), s1_fire)
 
   when(s2_fire) {
-    s3_setIdx     := s2_setIdx
-    s3_bankIdx    := s2_bankIdx
-    s3_bankMask   := s2_bankMask
-    s3_entries    := s2_entries
-    s3_startPc    := s2_startPc
-    s3_ctrResult  := s2_ctrResult
-    s3_strongBias := s2_strongBias
-    s3_prevPartPc := s2_prevPartPc
-    s3_simpleHist := s2_simpleHist
+    s3_setIdx       := s2_setIdx
+    s3_bankIdx      := s2_bankIdx
+    s3_bankMask     := s2_bankMask
+    s3_entries      := s2_entries
+    s3_startPc      := s2_startPc
+    s3_ctrResult    := s2_ctrResult
+    s3_strongBias   := s2_strongBias
+    s3_prevPartPc   := s2_prevPartPc
+    s3_simpleHist   := s2_simpleHist
+    s3_sramConflict := s2_sramConflict
   }
 
   // private val s2_tag = getTag(s2_startPc)
@@ -217,14 +221,14 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val (s2_multiHit, s2_multiHitWayIdx) = detectMultiHit(s2_hitMask, s2_entries.map(_.position))
 
   io.prediction.zipWithIndex.foreach { case (pred, i) =>
-    pred.valid            := s2_valid && s2_hitMask(i)
+    pred.valid            := s2_valid && s2_hitMask(i) && !s2_sramConflict
     pred.bits.taken       := s2_ctrResult(i)
     pred.bits.cfiPosition := s2_entries(i).position
     pred.bits.attribute   := s2_entries(i).attribute
     pred.bits.target      := getFullTarget(s2_startPc, s2_entries(i).targetLowerBits, s2_entries(i).targetCarry)
   }
   io.abtbResult.zipWithIndex.foreach { case (pred, i) =>
-    pred.valid             := s2_valid && s2_hitMask(i)
+    pred.valid             := s2_valid && s2_hitMask(i) && !s2_sramConflict
     pred.bits.taken        := s2_ctrResult(i)
     pred.bits.cfiPosition  := s2_entries(i).position
     pred.bits.attribute    := s2_entries(i).attribute
@@ -239,7 +243,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
     pos := s1_realEntries(i).position
   }
 
-  io.meta.valid      := s2_valid
+  io.meta.valid      := s2_valid && !s2_sramConflict
   io.meta.setIdx     := s2_setIdx
   io.meta.bankMask   := s2_bankMask
   io.meta.prevPartPc := s2_prevPartPc

@@ -27,10 +27,11 @@ import xiangshan.frontend.bpu.WriteBuffer
   */
 class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule {
   class BankIO(implicit p: Parameters) extends AheadBtbBundle {
-    val readReq:   DecoupledIO[BankReadReq] = Flipped(Decoupled(new BankReadReq))
-    val readResp:  BankReadResp             = Output(new BankReadResp)
-    val writeReq:  Valid[BankWriteReq]      = Flipped(Valid(new BankWriteReq))
-    val writeResp: Valid[BankWriteResp]     = Valid(new BankWriteResp)
+    val readReq:      DecoupledIO[BankReadReq] = Flipped(Decoupled(new BankReadReq))
+    val readResp:     BankReadResp             = Output(new BankReadResp)
+    val writeReq:     Valid[BankWriteReq]      = Flipped(Valid(new BankWriteReq))
+    val writeResp:    Valid[BankWriteResp]     = Valid(new BankWriteResp)
+    val sramConflict: Bool                     = Output(Bool())
   }
   val io: BankIO = IO(new BankIO)
 
@@ -99,6 +100,7 @@ class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule 
     setIdx = writeSetIdx,
     waymask = writeWayMask
   )
+  io.sramConflict := writeBuffer.io.read.head.valid && io.readReq.valid && forceWrite
   // when entry is written to sram, we need to notify takenCounter and replacer
   io.writeResp.valid             := writeBuffer.io.read.head.fire
   io.writeResp.bits.needResetCtr := writeBuffer.io.read.head.bits.needResetCtr
@@ -107,6 +109,7 @@ class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule 
 
   XSPerfAccumulate("read", sram.io.r.req.fire)
   XSPerfAccumulate("write", sram.io.w.req.fire)
+  XSPerfAccumulate("write_not_ready", !sram.io.w.req.ready)
   XSPerfAccumulate("write_buffer_full", !writeBuffer.io.write.head.ready)
   XSPerfAccumulate("write_buffer_full_drop_write", !writeBuffer.io.write.head.ready && io.writeReq.valid)
   XSPerfAccumulate("need_reset_ctr", io.writeResp.valid && io.writeResp.bits.needResetCtr)
