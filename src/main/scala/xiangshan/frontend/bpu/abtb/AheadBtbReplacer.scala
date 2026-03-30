@@ -25,15 +25,16 @@ import xiangshan.frontend.bpu.replacer.ReplacerState
 /**
   * This module implement the replacement policy for the ahead BTB.
   */
-class AheadBtbReplacer(implicit p: Parameters) extends AheadBtbModule {
-  val io: ReplacerIO = IO(new ReplacerIO)
+class AheadBtbReplacer(numWays: Int)(implicit p: Parameters) extends AheadBtbModule {
+  val io:          ReplacerIO = IO(new ReplacerIO(numWays))
+  def WayIdxWidth: Int        = log2Ceil(numWays)
 
   // use PlruStateGen caclulate next state and replace way
-  private val states           = Module(new ReplacerState(NumSets, NumWays - 1, HasExtraReadPort = true))
-  private val predReplacerGen  = Module(new PlruStateGen(NumWays, AccessSize = NumWays))
-  private val writeReplacerGen = Module(new PlruStateGen(NumWays))
+  private val states           = Module(new ReplacerState(NumSets, numWays - 1, HasExtraReadPort = true))
+  private val predReplacerGen  = Module(new PlruStateGen(numWays, AccessSize = numWays))
+  private val writeReplacerGen = Module(new PlruStateGen(numWays))
   private val writeTouch       = Wire(Valid(UInt(WayIdxWidth.W)))
-  private val touchWays        = Seq.fill(NumWays)(Wire(Valid(UInt(WayIdxWidth.W))))
+  private val touchWays        = Seq.fill(numWays)(Wire(Valid(UInt(WayIdxWidth.W))))
 
   writeTouch.valid            := io.writeValid
   writeTouch.bits             := io.writeWayIdx
@@ -62,7 +63,7 @@ class AheadBtbReplacer(implicit p: Parameters) extends AheadBtbModule {
 
   if (EnableCommitGHistDiff) {
     // use ReplacementPolicy class caclulate next state replace way
-    val replacer = ReplacementPolicy.fromString(Some("setplru"), NumWays, NumSets)
+    val replacer = ReplacementPolicy.fromString(Some("setplru"), numWays, NumSets)
 
     val readWriteConflict = io.readValid && io.writeValid && (io.readSetIdx === io.writeSetIdx)
     when(readWriteConflict) {
@@ -72,8 +73,8 @@ class AheadBtbReplacer(implicit p: Parameters) extends AheadBtbModule {
         replacer.access(io.writeSetIdx, io.writeWayIdx)
       }
       when(io.readValid) {
-        val touchSets = Seq.fill(NumWays)(io.readSetIdx)
-        val touchWays = Seq.fill(NumWays)(Wire(Valid(UInt(WayIdxWidth.W))))
+        val touchSets = Seq.fill(numWays)(io.readSetIdx)
+        val touchWays = Seq.fill(numWays)(Wire(Valid(UInt(WayIdxWidth.W))))
         touchWays.zip(io.readWayMask).zipWithIndex.foreach { case ((t, r), i) =>
           t.valid := r
           t.bits  := i.U

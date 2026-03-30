@@ -16,6 +16,7 @@
 package xiangshan.frontend.bpu.abtb
 
 import chisel3._
+import chisel3.util._
 import utils.AddrField
 import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.TargetFixHelper
@@ -53,10 +54,10 @@ trait Helpers extends HasAheadBtbParameters with TargetFixHelper {
     require(hitMask.length == position.length)
     require(hitMask.length >= 2)
     val isMultiHit     = WireDefault(false.B)
-    val multiHitWayIdx = WireDefault(0.U(WayIdxWidth.W))
+    val multiHitWayIdx = WireDefault(0.U(log2Ceil(BrNumWays).W))
     for {
-      i <- 0 until NumWays
-      j <- i + 1 until NumWays
+      i <- 0 until BrNumWays
+      j <- i + 1 until BrNumWays
     } {
       val bothHit      = hitMask(i) && hitMask(j)
       val samePosition = position(i) === position(j)

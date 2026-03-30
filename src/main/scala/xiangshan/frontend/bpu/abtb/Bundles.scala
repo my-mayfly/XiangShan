@@ -34,36 +34,36 @@ class BankReadReq(implicit p: Parameters) extends AheadBtbBundle {
   val setIdx: UInt = UInt(SetIdxWidth.W)
 }
 
-class BankReadResp(implicit p: Parameters) extends AheadBtbBundle {
-  val entries: Vec[AheadBtbEntry] = Vec(NumWays, new AheadBtbEntry)
+class BankReadResp(numWays: Int)(implicit p: Parameters) extends AheadBtbBundle {
+  val entries: Vec[AheadBtbEntry] = Vec(numWays, new AheadBtbEntry)
 }
 
-class BankWriteReq(implicit p: Parameters) extends WriteReqBundle with HasAheadBtbParameters {
+class BankWriteReq(numWays: Int)(implicit p: Parameters) extends WriteReqBundle with HasAheadBtbParameters {
   val needResetCtr: Bool          = Bool()
   val setIdx:       UInt          = UInt(SetIdxWidth.W)
-  val wayIdx:       UInt          = UInt(WayIdxWidth.W)
+  val wayIdx:       UInt          = UInt(log2Ceil(numWays).W)
   val entry:        AheadBtbEntry = new AheadBtbEntry
 
   override def tag: Option[UInt] = Some(entry.tag)
 }
 
-class BankWriteResp(implicit p: Parameters) extends AheadBtbBundle {
+class BankWriteResp(numWays: Int)(implicit p: Parameters) extends AheadBtbBundle {
   val needResetCtr: Bool = Bool()
   val setIdx:       UInt = UInt(SetIdxWidth.W)
-  val wayIdx:       UInt = UInt(WayIdxWidth.W)
+  val wayIdx:       UInt = UInt(log2Ceil(numWays).W)
 }
 
-class ReplacerIO(implicit p: Parameters) extends AheadBtbBundle {
+class ReplacerIO(numWays: Int)(implicit p: Parameters) extends AheadBtbBundle {
   val readValid:   Bool      = Input(Bool())
   val readSetIdx:  UInt      = Input(UInt(SetIdxWidth.W))
-  val readWayMask: Vec[Bool] = Input(Vec(NumWays, Bool()))
+  val readWayMask: Vec[Bool] = Input(Vec(numWays, Bool()))
 
   val writeValid:  Bool = Input(Bool())
   val writeSetIdx: UInt = Input(UInt(SetIdxWidth.W))
-  val writeWayIdx: UInt = Input(UInt(WayIdxWidth.W))
+  val writeWayIdx: UInt = Input(UInt(log2Ceil(numWays).W))
 
   val replaceSetIdx: UInt = Input(UInt(SetIdxWidth.W))
-  val victimWayIdx:  UInt = Output(UInt(WayIdxWidth.W))
+  val victimWayIdx:  UInt = Output(UInt(log2Ceil(numWays).W))
 }
 
 class AheadBtbMetaEntry(implicit p: Parameters) extends AheadBtbBundle {
@@ -74,12 +74,13 @@ class AheadBtbMetaEntry(implicit p: Parameters) extends AheadBtbBundle {
 }
 
 class AheadBtbMeta(implicit p: Parameters) extends AheadBtbBundle {
-  val valid:      Bool                   = Bool()
-  val setIdx:     UInt                   = UInt(SetIdxWidth.W)
-  val bankMask:   UInt                   = UInt(NumBanks.W)
-  val entries:    Vec[AheadBtbMetaEntry] = Vec(NumWays, new AheadBtbMetaEntry())
-  val prevPartPc: UInt                   = UInt(4.W)
-  val simpleHist: UInt                   = UInt(4.W)
+  val valid:       Bool                   = Bool()
+  val setIdx:      UInt                   = UInt(SetIdxWidth.W)
+  val bankMask:    UInt                   = UInt(NumBanks.W)
+  val brEntries:   Vec[AheadBtbMetaEntry] = Vec(BrNumWays, new AheadBtbMetaEntry())
+  val jumpEntries: Vec[AheadBtbMetaEntry] = Vec(JumpNumWays, new AheadBtbMetaEntry())
+  val prevPartPc:  UInt                   = UInt(4.W)
+  val simpleHist:  UInt                   = UInt(4.W)
 }
 
 class AheadBtbEntry(implicit p: Parameters) extends AheadBtbBundle {

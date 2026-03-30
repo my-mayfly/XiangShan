@@ -19,9 +19,10 @@ import chisel3.util._
 import xiangshan.frontend.bpu.HasBpuParameters
 
 case class AheadBtbParameters(
-    NumEntries:           Int = 1024,
+    BrNumEntries:         Int = 1024,
     NumBanks:             Int = 4,
-    NumWays:              Int = 4,
+    BrNumWays:            Int = 4,
+    JumpNumWays:          Int = 2,
     TagWidth:             Int = 24,
     TargetLowerBitsWidth: Int = 22,
     WriteBufferSize:      Int = 4,
@@ -34,14 +35,14 @@ case class AheadBtbParameters(
 trait HasAheadBtbParameters extends HasBpuParameters {
   def abtbParameters: AheadBtbParameters = bpuParameters.abtbParameters
 
-  def NumEntries:           Int = abtbParameters.NumEntries
+  def BrNumEntries:         Int = abtbParameters.BrNumEntries
   def NumBanks:             Int = abtbParameters.NumBanks
-  def NumWays:              Int = abtbParameters.NumWays
-  def NumSets:              Int = NumEntries / NumWays / NumBanks
+  def BrNumWays:            Int = abtbParameters.BrNumWays
+  def JumpNumWays:          Int = abtbParameters.JumpNumWays
+  def NumSets:              Int = BrNumEntries / BrNumWays / NumBanks
   def TagWidth:             Int = abtbParameters.TagWidth
   def TargetLowerBitsWidth: Int = abtbParameters.TargetLowerBitsWidth
   def SetIdxWidth:          Int = log2Ceil(NumSets)
-  def WayIdxWidth:          Int = log2Ceil(NumWays)
   def BankIdxWidth:         Int = log2Ceil(NumBanks)
   def WriteBufferSize:      Int = abtbParameters.WriteBufferSize
   def TakenCounterWidth:    Int = abtbParameters.TakenCounterWidth

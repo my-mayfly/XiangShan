@@ -25,12 +25,12 @@ import xiangshan.frontend.bpu.WriteBuffer
 /**
   * This module stores the ahead BTB entries.
   */
-class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule {
+class AheadBtbBank(numWays: Int, bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule {
   class BankIO(implicit p: Parameters) extends AheadBtbBundle {
     val readReq:      DecoupledIO[BankReadReq] = Flipped(Decoupled(new BankReadReq))
-    val readResp:     BankReadResp             = Output(new BankReadResp)
-    val writeReq:     Valid[BankWriteReq]      = Flipped(Valid(new BankWriteReq))
-    val writeResp:    Valid[BankWriteResp]     = Valid(new BankWriteResp)
+    val readResp:     BankReadResp             = Output(new BankReadResp(numWays))
+    val writeReq:     Valid[BankWriteReq]      = Flipped(Valid(new BankWriteReq(numWays)))
+    val writeResp:    Valid[BankWriteResp]     = Valid(new BankWriteResp(numWays))
     val sramConflict: Bool                     = Output(Bool())
   }
   val io: BankIO = IO(new BankIO)
@@ -38,8 +38,8 @@ class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule 
   private val sram = Module(new SplittedSRAMTemplate(
     new AheadBtbEntry,
     set = NumSets,
-    way = NumWays,
-    waySplit = NumWays / 2,
+    way = numWays,
+    waySplit = numWays / 2,
     dataSplit = 1,
     shouldReset = true,
     singlePort = true,
@@ -69,7 +69,7 @@ class AheadBtbBank(bandIdx: Int)(implicit p: Parameters) extends AheadBtbModule 
   // read has higher priority than write
   // we use a write buffer to store the write requests when read and write are both valid
   private val writeBuffer = Module(new WriteBuffer(
-    new BankWriteReq,
+    new BankWriteReq(numWays),
     WriteBufferSize,
     numPorts = 1,
     nameSuffix = s"abtbBank$bandIdx"
