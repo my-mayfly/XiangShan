@@ -41,6 +41,7 @@ class MicroTagePrediction(implicit p: Parameters) extends MicroTageBundle {
 
 class MicroTageMeta(implicit p: Parameters) extends MicroTageBundle {
   val readIndex:  Vec[UInt]       = Vec(NumTables, UInt(log2Ceil(MaxNumSets).W))
+  val pathHist:   UInt            = UInt(MaxMicroTageHistWidth.W)
   val abtbResult: Vec[AbtbResult] = Vec(NumAheadBtbPredictionEntries, new AbtbResult)
 }
 

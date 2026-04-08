@@ -38,6 +38,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     val train:          PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
     val commit:         Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
     val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val pathHist:       UInt                  = Output(UInt(MaxMicroTageHistWidth.W))
   }
   val io: PhrIO = IO(new PhrIO)
 
@@ -292,6 +293,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   io.s2_foldedPhr   := s2_foldedPhrReg
   io.s3_foldedPhr   := s3_foldedPhrReg
   io.trainFoldedPhr := metaPhrFolded
+  io.pathHist       := s1_phrValue(MaxMicroTageHistWidth - 1, 0)
 
   // TODO: Currently unavailable，waiting for ftq commit info
   // commit time phr checker
