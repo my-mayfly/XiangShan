@@ -274,6 +274,7 @@ class BpuRedirectMeta(implicit p: Parameters) extends BpuBundle {
   val phr:          PhrMeta         = new PhrMeta
   val commonHRMeta: CommonHRMeta    = new CommonHRMeta
   val ras:          RasRedirectMeta = new RasRedirectMeta
+  val pathHist:     UInt            = UInt(MaxMicroTageHistWidth.W)
 }
 
 // metadata for resolve training (e.g. tage, mainBtb)

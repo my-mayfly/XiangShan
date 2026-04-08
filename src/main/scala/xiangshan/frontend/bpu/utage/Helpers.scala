@@ -23,9 +23,10 @@ import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.FoldedHistoryInfo
 import xiangshan.frontend.bpu.HalfAlignHelper
 import xiangshan.frontend.bpu.MicroTageInfo
+import xiangshan.frontend.bpu.PhrHelper
 import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
 
-trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
+trait Helpers extends HasMicroTageParameters with HalfAlignHelper with PhrHelper {
   private object TAGEHistoryType {
     val Short   = 0
     val Medium  = 1
@@ -33,23 +34,7 @@ trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
     val Unknown = 3
   }
   def getUnhashedIdx(pc: PrunedAddr): UInt = pc(VAddrBits - 1, instOffsetBits)
-  // def getUnhashedTag(pc: PrunedAddr): UInt = pc(VAddrBits - 1, PCHighTagStart)
-  // def connectPcTag(partPc: UInt, tableId: Int): UInt = {
-  //   require(tableId >= 0 && tableId <= 3, s"tableId must be in [0,3], got $tableId")
-  //   def concatBits(bits: Seq[Bool]): UInt = if (bits.isEmpty) 0.U(1.W) else bits.foldLeft(0.U(0.W))(Cat(_, _))
-  //   val tagPC = partPc
-  //   val hashPC = tableId match {
-  //     case TAGEHistoryType.Short =>
-  //       concatBits(PCTagHashBitsForShortHistory.map(tagPC(_)))
-  //     case TAGEHistoryType.Medium =>
-  //       concatBits(PCTagHashBitsForMediumHistory.map(tagPC(_)))
-  //     case TAGEHistoryType.Long =>
-  //       concatBits(PCTagHashBitsForLongHistory.map(tagPC(_)))
-  //     case _ =>
-  //       concatBits(PCTagHashBitsDefault.map(tagPC(_)))
-  //   }
-  //   hashPC
-  // }
+
   def getUnhashedTag(pc: PrunedAddr, tableId: Int): UInt = {
     def concatBits(bits: Seq[Bool]): UInt = if (bits.isEmpty) 0.U(1.W) else bits.foldLeft(0.U(0.W))(Cat(_, _))
     val tagPC = pc(VAddrBits - 1, instOffsetBits)
@@ -81,40 +66,33 @@ trait Helpers extends HasMicroTageParameters with HalfAlignHelper {
     }
     connectPC
   }
-  def computeSameIdx(pc: PrunedAddr, allFh: PhrAllFoldedHistories): UInt = {
-    val idxFhInfo   = new FoldedHistoryInfo(log2Ceil(MaxNumSets), log2Ceil(MaxNumSets))
-    val unhashedIdx = getUnhashedIdx(pc)
-    val idxFh       = allFh.getHistWithInfo(idxFhInfo).foldedHist
-    val idx         = (unhashedIdx ^ idxFh)(log2Ceil(MaxNumSets) - 1, 0)
-    idx
-  }
+
   def computeHashIdx(
       pc:         PrunedAddr,
-      allFh:      PhrAllFoldedHistories,
+      pathHist:   UInt,
       tablesInfo: Seq[MicroTageInfo],
       tableId:    Int
   ): UInt = {
     val histLen     = tablesInfo(tableId).HistoryLength
     val numSets     = tablesInfo(tableId).NumSets
-    val idxFhInfo   = new FoldedHistoryInfo(histLen, min(log2Ceil(numSets), histLen))
+    val compLen     = min(histLen, log2Ceil(numSets))
+    val idxFh       = computeFoldedHist(pathHist, compLen)(histLen)
     val unhashedIdx = getUnhashedIdx(pc)
-    val idxFh       = allFh.getHistWithInfo(idxFhInfo).foldedHist
     val idx         = (unhashedIdx ^ idxFh)(log2Ceil(numSets) - 1, 0)
     idx
   }
   def computeHashTag(
       pc:         PrunedAddr,
-      allFh:      PhrAllFoldedHistories,
+      pathHist:   UInt,
       tablesInfo: Seq[MicroTageInfo],
       tableId:    Int
   ): UInt = {
     val histLen       = tablesInfo(tableId).HistoryLength
     val tagLen        = tablesInfo(tableId).TagWidth
     val histBitsInTag = tablesInfo(tableId).HistBitsInTag
-    val tagFhInfo     = new FoldedHistoryInfo(histLen, min(histLen, histBitsInTag))
-    val altTagFhInfo  = new FoldedHistoryInfo(histLen, min(histLen, histBitsInTag - 1))
-    val tagFh         = allFh.getHistWithInfo(tagFhInfo).foldedHist
-    val altTagFh      = allFh.getHistWithInfo(altTagFhInfo).foldedHist
+    val tagCompLen    = min(histLen, histBitsInTag)
+    val tagFh         = computeFoldedHist(pathHist, tagCompLen)(histLen)
+    val altTagFh      = computeFoldedHist(pathHist, tagCompLen - 1)(histLen)
     val unhashedTag   = getUnhashedTag(pc, tableId)
     val unhashedIdx   = getUnhashedIdx(pc)
     val lowTag        = (unhashedTag ^ tagFh ^ (altTagFh << 1))(histBitsInTag - 1, 0)

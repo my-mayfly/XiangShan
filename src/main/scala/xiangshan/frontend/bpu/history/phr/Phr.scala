@@ -18,6 +18,7 @@ package xiangshan.frontend.bpu.history.phr
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
+import utility.XSError
 import utility.XSPerfAccumulate
 import utility.XSWarn
 import xiangshan.frontend.PrunedAddr
@@ -36,6 +37,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     val train:          PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
     val commit:         Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
     val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val pathHist:       UInt                  = Output(UInt(MaxMicroTageHistWidth.W))
   }
   val io: PhrIO = IO(new PhrIO)
 
@@ -74,7 +76,9 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
 
   private val s0_phrPtr    = WireInit(0.U.asTypeOf(new PhrPtr))
   private val s0_phrPtrReg = RegEnable(s0_phrPtr, 0.U.asTypeOf(new PhrPtr), !s0_stall)
+  private val s0_pathHist  = Wire(Vec(MaxMicroTageHistWidth, Bool()))
   private val s1_phrPtr    = RegEnable(s0_phrPtr, 0.U.asTypeOf(new PhrPtr), s0_fire)
+  private val s1_pathHist  = RegEnable(s0_pathHist.asUInt, 0.U(MaxMicroTageHistWidth.W), s0_fire)
 
   private val s0_phrValue    = getPhr(s0_phrPtr)                       // debug use it
   private val s0_phrRegValue = getPhr(RegEnable(s0_phrPtr, !s0_stall)) // debug use it
@@ -133,23 +137,32 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   private val hashHigh  = hash(PathHashWidth - 1, Shamt)
 
   when(updateData.valid) {
-    phrPtr    := updateData.phrMeta.phrPtr
-    s0_phrPtr := updateData.phrMeta.phrPtr
+    val updateOldPhr = getRedirectPhr(updateData.phrMeta)
+    s0_pathHist := updateOldPhr(MaxMicroTageHistWidth - 1, 0).asBools
+    phrPtr      := updateData.phrMeta.phrPtr
+    s0_phrPtr   := updateData.phrMeta.phrPtr
     for (i <- 1 to PathHashHighWidth) {
       phr((updateData.phrMeta.phrPtr + i.U).value) := updateData.phrMeta.phrLowBits(i - 1)
+      s0_pathHist(i - 1)                           := updateData.phrMeta.phrLowBits(i - 1)
     }
     when(updateData.taken) {
       for (i <- 0 until Shamt) {
         phr((updateData.phrMeta.phrPtr - i.U).value) := shiftBits(Shamt - 1 - i)
+        s0_pathHist(Shamt - 1 - i)                   := shiftBits(Shamt - 1 - i)
       }
       for (i <- 1 to PathHashHighWidth) {
         phr((updateData.phrMeta.phrPtr + i.U).value) := hashHigh(i - 1) ^ updateData.phrMeta.phrLowBits(i - 1)
+        s0_pathHist(Shamt - 1 + i)                   := hashHigh(i - 1) ^ updateData.phrMeta.phrLowBits(i - 1)
+      }
+      for (i <- (PathHashHighWidth + Shamt) until MaxMicroTageHistWidth) {
+        s0_pathHist(i) := updateOldPhr(i - Shamt)
       }
       phrPtr    := updateData.phrMeta.phrPtr - Shamt.U
       s0_phrPtr := updateData.phrMeta.phrPtr - Shamt.U
     }
   }.otherwise {
-    s0_phrPtr := phrPtr
+    s0_phrPtr   := phrPtr
+    s0_pathHist := phrValue(MaxMicroTageHistWidth - 1, 0).asBools
   }
 
   /*
@@ -228,6 +241,9 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   io.s2_foldedPhr   := s2_foldedPhrReg
   io.s3_foldedPhr   := s3_foldedPhrReg
   io.trainFoldedPhr := metaPhrFolded
+  io.pathHist       := s1_pathHist // s1_phrValue(MaxMicroTageHistWidth - 1, 0)
+  private val diffPhrValue = s1_pathHist =/= s1_phrValue(MaxMicroTageHistWidth - 1, 0)
+  XSError(s0_fire && diffPhrValue, "PHR Mismatch: Data does not match reference")
 
   // TODO: Currently unavailable，waiting for ftq commit info
   // commit time phr checker

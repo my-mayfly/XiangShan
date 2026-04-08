@@ -158,6 +158,11 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   private val s2_realUtageMeta = Wire(new MicroTageMeta)
   private val s3_utageMeta     = RegEnable(s2_realUtageMeta, s2_fire)
 
+  private val s2_phrMeta  = RegEnable(phr.io.phrMeta, s1_fire)
+  private val s3_phrMeta  = RegEnable(s2_phrMeta, s2_fire)
+  private val s2_pathHist = RegEnable(phr.io.pathHist, s1_fire)
+  private val s3_pathHist = RegEnable(s2_pathHist, s2_fire)
+
   /* *** common inputs *** */
   private val stageCtrl = Wire(new StageCtrl)
   stageCtrl.s0_fire := s0_fire
@@ -202,12 +207,13 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   abtb.io.redirectValid := redirect.valid
   abtb.io.overrideValid := s3_override
 
-  utage.io.foldedPathHist         := phr.io.s0_foldedPhr
-  utage.io.foldedPathHistForTrain := phr.io.trainFoldedPhr
-  utage.io.abtbPrediction         := abtb.io.abtbResult
-  utage.io.abtbPosVec             := abtb.io.abtbPos
-  utage.io.overrideValid          := s3_override
-  utage.io.redirectValid          := redirect.valid
+  utage.io.pathHist         := phr.io.pathHist
+  utage.io.abtbPrediction   := abtb.io.abtbResult
+  utage.io.abtbPosVec       := abtb.io.abtbPos
+  utage.io.overrideValid    := s3_override
+  utage.io.overridePathHist := s3_pathHist
+  utage.io.redirectValid    := redirect.valid
+  utage.io.redirectPathHist := redirect.bits.meta.pathHist
 
   // uras
   uras.io.specIn.startPc                := s1_startPc
@@ -411,9 +417,6 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
     s3_valid && (takenDiff || cfiPositionDiff || attributeDiff || targetDiff)
   }
 
-  private val s2_phrMeta = RegEnable(phr.io.phrMeta, s1_fire)
-  private val s3_phrMeta = RegEnable(s2_phrMeta, s2_fire)
-
   private val s3_commonHRMeta = WireInit(0.U.asTypeOf(new CommonHRMeta))
   s3_commonHRMeta.ghr       := commonHR.io.s3ResolveMeta.ghr
   s3_commonHRMeta.bw        := commonHR.io.s3ResolveMeta.bw
@@ -426,6 +429,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   s3_redirectMeta.phr          := s3_phrMeta
   s3_redirectMeta.commonHRMeta := s3_commonHRMeta
   s3_redirectMeta.ras          := ras.io.redirectMeta
+  s3_redirectMeta.pathHist     := s3_pathHist
 
   private val s3_resolveMeta = Wire(new BpuResolveMeta)
   s3_resolveMeta.mbtb     := RegEnable(mbtb.io.meta, s2_fire)
