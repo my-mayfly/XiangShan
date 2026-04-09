@@ -149,6 +149,8 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s3_strongBias = RegInit(VecInit.fill(NumWays)(false.B))
 
   private val s1_realEntries = Mux(overrideValid, s3_entries, s1_entries)
+  private val s1_tag         = getTag(s1_startPc)
+  private val s1_realHitMask = VecInit(s1_realEntries.map(entry => entry.valid && entry.tag === s1_tag))
   private val s2_setIdx      = RegEnable(Mux(overrideValid, s3_setIdx, s1_setIdx), s1_fire)
   private val s2_bankIdx     = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
   private val s2_bankMask    = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
@@ -156,6 +158,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s2_strongBias  = RegEnable(Mux(overrideValid, s3_strongBias, s1_strongBias), s1_fire)
   private val s2_entries     = RegEnable(s1_realEntries, s1_fire)
   private val s2_startPc     = RegEnable(s1_startPc, s1_fire)
+  private val s2_hitMask     = RegEnable(s1_realHitMask, s1_fire)
 
   when(s2_fire) {
     s3_setIdx     := s2_setIdx
@@ -167,10 +170,11 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
     s3_strongBias := s2_strongBias
   }
 
-  private val s2_tag = getTag(s2_startPc)
-  dontTouch(s2_tag)
-  private val s2_hitMask = s2_entries.map(entry => entry.valid && entry.tag === s2_tag)
-  private val s2_hit     = s2_hitMask.reduce(_ || _)
+  // private val s2_tag = getTag(s2_startPc)
+  // dontTouch(s2_tag)
+  // private val s2_hitMask = s2_entries.map(entry => entry.valid && entry.tag === s2_tag)
+  // private val s2_hit     = s2_hitMask.reduce(_ || _)
+  private val s2_hit = s2_hitMask.reduce(_ || _)
 
   // When detect multi-hit, we need to invalidate one entry.
   private val (s2_multiHit, s2_multiHitWayIdx) = detectMultiHit(s2_hitMask, s2_entries.map(_.position))
@@ -265,6 +269,8 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
         val needDecrease = updateThisSet && isCond && (!t1_trainTaken || t1_trainTaken && posBefore)
         val needIncrease = updateThisSet && isCond && t1_trainTaken && posEqual
 
+        // For timing purposes, the indirect jump branch in the abtb comparison matrix relies on
+        // the default CTR assignment and omits extra attribute checks.
         when(needReset)(ctr.resetWeakPositive())
           .elsewhen(needDecrease)(ctr.selfDecrease())
           .elsewhen(needIncrease)(ctr.selfIncrease())
