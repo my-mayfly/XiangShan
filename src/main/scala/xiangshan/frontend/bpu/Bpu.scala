@@ -83,7 +83,7 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
 
   /* *** aliases *** */
   private val commit   = io.fromFtq.commit
-  private val redirect = io.fromFtq.redirect
+  private val redirect = RegNext(io.fromFtq.redirect, 0.U.asTypeOf(Valid(new BpuRedirect)))
 
   /* *** CSR ctrl sub-predictor enable *** */
   private val ctrl      = DelayN(io.ctrl, 2) // delay 2 cycle for timing
