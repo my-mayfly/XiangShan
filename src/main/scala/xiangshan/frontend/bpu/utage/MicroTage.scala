@@ -48,6 +48,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     val abtbPrediction: Vec[Valid[AheadBtbResult]] = Input(Vec(NumAheadBtbPredictionEntries, Valid(new AheadBtbResult)))
     val overrideValid:  Bool                       = Input(Bool())
     val overridePathHist: UInt = Input(UInt(MaxMicroTageHistWidth.W))
+    val overrideStartPc:  PrunedAddr = Input(PrunedAddr(VAddrBits))
     val redirectValid:    Bool = Input(Bool())
     val redirectPathHist: UInt = Input(UInt(MaxMicroTageHistWidth.W))
   }
@@ -64,6 +65,9 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val a0_startPc  = io.startPc
   private val a1_startPc  = io.startPc
   private val a1_pathHist = io.pathHist
+  private val overrideValid   = io.overrideValid
+  private val overrideStartPc = io.overrideStartPc
+
   private val a0_pathHist = MuxCase(
     io.pathHist,
     Seq(
@@ -71,8 +75,6 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       io.overrideValid -> io.overridePathHist
     )
   )
-
-  private val overrideValid = io.overrideValid
 
   /* *** submodules *** */
   private val tables = TableInfos.zipWithIndex.map {
@@ -124,6 +126,21 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
       a1_predRead(i)(j).takenCtr    := a1_predEntries(i)(j).takenCtr
     }
   }
+  private val a1_reverseOHVec = Wire(Vec(NumAheadBtbPredictionEntries, Vec(NumTables, Bool())))
+  private val a1_wayHitVec    = Wire(Vec(NumAheadBtbPredictionEntries, Vec(NumTables, Vec(NumWays, Bool()))))
+  for (i <- 0 until NumAheadBtbPredictionEntries) {
+    val tableHitVec = Wire(Vec(NumTables, Bool()))
+    for (j <- 0 until NumTables) {
+      val predTag = computeHashTag(a1_startPc, a1_pathHist, TableInfos, j)
+      for (k <- 0 until NumWays) {
+        val tagHit = a1_predEntries(j)(k).tag === predTag
+        val posHit = a1_predEntries(j)(k).cfiPosition === io.abtbPosVec(i)
+        a1_wayHitVec(i)(j)(k) := tagHit && posHit && a1_predEntries(j)(k).valid
+      }
+      tableHitVec(j) := a1_wayHitVec(i)(j).reduce(_ || _)
+    }
+    a1_reverseOHVec(i) := PriorityEncoderOH(tableHitVec.reverse)
+  }
 
   // Prioritize early position comparison at the cost of ABTB SRAM timing margin,
   // ensuring glitch-free valid signals for the next stage.
@@ -141,7 +158,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val a3_posHitVec     = RegInit(0.U.asTypeOf(a1_posHitVec))
   private val overridePredRead = Wire(Vec(NumTables, Vec(NumWays, new MicroTageTablePred)))
   for (i <- 0 until NumTables) {
-    val predTag = computeHashTag(a1_startPc, io.overridePathHist, TableInfos, i)
+    val predTag = computeHashTag(overrideStartPc, io.overridePathHist, TableInfos, i)
     for (j <- 0 until NumWays) {
       overridePredRead(i)(j).taken := a3_predRead(i)(j).taken
       overridePredRead(i)(j).valid := a3_predRead(i)(j).valid
@@ -153,6 +170,22 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     }
   }
 
+  private val a3_reverseOHVec = Wire(Vec(NumAheadBtbPredictionEntries, Vec(NumTables, Bool())))
+  private val a3_wayHitVec    = Wire(Vec(NumAheadBtbPredictionEntries, Vec(NumTables, Vec(NumWays, Bool()))))
+  for (i <- 0 until NumAheadBtbPredictionEntries) {
+    val tableHitVec = Wire(Vec(NumTables, Bool()))
+    for (j <- 0 until NumTables) {
+      val predTag = computeHashTag(overrideStartPc, io.overridePathHist, TableInfos, j)
+      for (k <- 0 until NumWays) {
+        val tagHit = a3_predRead(j)(k).tag === predTag
+        val posHit = a3_posHitVec(i)(j)(k)
+        a3_wayHitVec(i)(j)(k) := tagHit && posHit && a3_predRead(j)(k).valid
+      }
+      tableHitVec(j) := a3_wayHitVec(i)(j).reduce(_ || _)
+    }
+    a3_reverseOHVec(i) := PriorityEncoderOH(tableHitVec.reverse)
+  }
+
   private val a2_readIndex = RegEnable(Mux(overrideValid, a3_readIndex, a1_readIndex), a1_fire)
   private val a2_predRead =
     RegEnable(Mux(overrideValid, overridePredRead, a1_predRead), 0.U.asTypeOf(a1_predRead), a1_fire)
@@ -160,6 +193,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     RegEnable(Mux(overrideValid, a3_posHitVec, a1_posHitVec), 0.U.asTypeOf(a1_posHitVec), a1_fire)
   private val a2_fromAbtbPos     = RegEnable(io.abtbPosVec, a1_fire)
   private val a2_pathHist        = RegEnable(Mux(overrideValid, io.overridePathHist, io.pathHist), a1_fire)
+  private val a2_reverseOHVec =
+    RegEnable(Mux(overrideValid, a3_reverseOHVec, a1_reverseOHVec), 0.U.asTypeOf(a1_reverseOHVec), a1_fire)
   private val a2_abtbHitVec      = Wire(Vec(NumAheadBtbPredictionEntries, Bool()))
   private val a2_abtbTakenVec    = Wire(Vec(NumAheadBtbPredictionEntries, Bool()))
   private val a2_abtbUseTableId  = Wire(Vec(NumAheadBtbPredictionEntries, UInt(log2Ceil(NumTables).W)))
@@ -167,6 +202,8 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
   private val a2_tableIdVec      = VecInit.tabulate(NumTables)(i => i.U)
   private val a2_abtbTakenCtrVec = Wire(Vec(NumAheadBtbPredictionEntries, TakenCounter()))
 
+  private val test_mux1H_hit = Wire(Vec(NumAheadBtbPredictionEntries, Bool()))
+  dontTouch(test_mux1H_hit)
   for (i <- 0 until NumAheadBtbPredictionEntries) {
     val tableHitVec         = Wire(Vec(NumTables, Bool()))
     val tableCfiPositionVec = Wire(Vec(NumTables, UInt(CfiPositionWidth.W)))
@@ -176,7 +213,7 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     for (j <- 0 until NumTables) {
       val wayHitVec = Wire(Vec(NumWays, Bool()))
       for (k <- 0 until NumWays) {
-        wayHitVec(k) := a2_predRead(j)(k).tagHitDup(i) && a2_posHitVec(i)(j)(k)
+        wayHitVec(k) := a2_predRead(j)(k).tagHitDup(i) && a2_posHitVec(i)(j)(k) && a2_predRead(j)(k).valid
       }
       tableHitVec(j) := wayHitVec.asUInt.orR
       val priorityWayHitVec = PriorityEncoderOH(wayHitVec)
@@ -187,11 +224,14 @@ class MicroTage(implicit p: Parameters) extends BasePredictor with HasMicroTageP
     }
     a2_abtbHitVec(i) := tableHitVec.asUInt.orR
     // Find the hit result from the highest-priority table
-    val priorityTableHitVec = PriorityEncoderOH(tableHitVec.reverse)
+    val test_priorityTableHitVec = PriorityEncoderOH(tableHitVec.reverse)
+    val priorityTableHitVec = a2_reverseOHVec(i)
     a2_abtbTakenVec(i)    := Mux1H(priorityTableHitVec, tableTakenVec.reverse)
     a2_abtbTakenCtrVec(i) := Mux1H(priorityTableHitVec, tableTakenCtrVec.reverse)
     a2_abtbUseTableId(i)  := Mux1H(priorityTableHitVec, a2_tableIdVec.reverse)
     a2_abtbUseWayId(i)    := Mux1H(priorityTableHitVec, tableWayIdVec.reverse)
+    test_mux1H_hit(i) := priorityTableHitVec.asUInt =/= test_priorityTableHitVec.asUInt
+    XSPerfAccumulate("Mux1H_diff", test_mux1H_hit(i))
   }
 
   private val s1_predMeta = Wire(Valid(new MicroTageMeta))

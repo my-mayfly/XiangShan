@@ -32,6 +32,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   class AheadBtbIO(implicit p: Parameters) extends BasePredictorIO with HasFastTrainIO {
     val redirectValid: Bool                       = Input(Bool())
     val overrideValid: Bool                       = Input(Bool())
+    val overrideStartPc: PrunedAddr               = Input(PrunedAddr(VAddrBits))
     val prediction:    Vec[Valid[Prediction]]     = Output(Vec(NumAheadBtbPredictionEntries, Valid(new Prediction)))
     val abtbResult:    Vec[Valid[AheadBtbResult]] = Output(Vec(NumAheadBtbPredictionEntries, Valid(new AheadBtbResult)))
     val abtbResultPos: Vec[UInt]                  = Output(Vec(NumAheadBtbPredictionEntries, UInt(CfiPositionWidth.W)))
@@ -72,8 +73,8 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s1_ready = Wire(Bool())
   private val s2_ready = Wire(Bool())
 
-  private val s1_flush = Wire(Bool())
-  private val s2_flush = Wire(Bool())
+  // private val s1_flush = Wire(Bool())
+  // private val s2_flush = Wire(Bool())
 
   private val s1_valid = RegInit(false.B)
   private val s2_valid = RegInit(false.B)
@@ -82,6 +83,7 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val predictionSent  = io.stageCtrl.s1_fire
   private val redirectValid   = io.redirectValid
   private val overrideValid   = io.overrideValid
+  private val overrideStartPc = io.overrideStartPc
 
   s0_fire := io.enable && predictReqValid
   s1_fire := io.enable && s1_valid && s2_ready && predictReqValid
@@ -90,15 +92,15 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   s1_ready := s1_fire || !s1_valid
   s2_ready := s2_fire || !s2_valid || overrideValid || redirectValid
 
-  s2_flush := redirectValid
-  s1_flush := s2_flush
+  // s2_flush := redirectValid
+  // s1_flush := s2_flush
 
   when(s0_fire)(s1_valid := true.B)
-    .elsewhen(s1_flush)(s1_valid := false.B)
+    .elsewhen(redirectValid)(s1_valid := false.B)
     .elsewhen(s1_fire)(s1_valid := false.B)
 
-  when(s1_fire)(s2_valid := true.B)
-    .elsewhen(s2_flush)(s2_valid := false.B)
+  when(redirectValid)(s2_valid := false.B)
+    .elsewhen(s1_fire)(s2_valid := true.B)
     .elsewhen(s2_fire)(s2_valid := false.B)
 
   /* --------------------------------------------------------------------------------------------------------------
@@ -152,9 +154,14 @@ class AheadBtb(implicit p: Parameters) extends BasePredictor with Helpers {
   private val s3_ctrResult  = RegInit(VecInit.fill(NumWays)(false.B))
   private val s3_strongBias = RegInit(VecInit.fill(NumWays)(false.B))
 
-  private val s1_realEntries = Mux(overrideValid, s3_entries, s1_entries)
+
   private val s1_tag         = getTag(s1_startPc)
-  private val s1_realHitMask = VecInit(s1_realEntries.map(entry => entry.valid && entry.tag === s1_tag))
+  private val s1_hitMask     = VecInit(s1_entries.map(entry => entry.valid && entry.tag === s1_tag))
+  // Split overrideValid and Tag comparison paths to achieve partial parallelism.
+  private val s1_overrideTag     = getTag(overrideStartPc)
+  private val s1_overrideHitMask = VecInit(s3_entries.map(entry => entry.valid && entry.tag === s1_overrideTag))
+  private val s1_realHitMask = Mux(overrideValid, s1_overrideHitMask, s1_hitMask)
+  private val s1_realEntries = Mux(overrideValid, s3_entries, s1_entries)
   private val s2_setIdx      = RegEnable(Mux(overrideValid, s3_setIdx, s1_setIdx), s1_fire)
   private val s2_bankIdx     = RegEnable(Mux(overrideValid, s3_bankIdx, s1_bankIdx), s1_fire)
   private val s2_bankMask    = RegEnable(Mux(overrideValid, s3_bankMask, s1_bankMask), s1_fire)
