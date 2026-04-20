@@ -102,8 +102,8 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
 
   private val s0_phrValue    = getPhr(s0_phrPtr)                       // debug use it
   private val s0_phrRegValue = getPhr(RegEnable(s0_phrPtr, !s0_stall)) // debug use it
-  private val s1_phrValue    = phrDup(0).asUInt                               // getPhr(s1_phrPtr)
-  private val phrValue       = phrDup(0).asUInt                               // getPhr(phrPtr)
+  private val s1_phrValue    = phrDup(0).asUInt                        // getPhr(s1_phrPtr)
+  private val phrValue       = phrDup(0).asUInt                        // getPhr(phrPtr)
   private val debugPhrValue  = getDebugPhr(phrPtr)
 
   private val diffPhrValue = phrValue =/= debugPhrValue
