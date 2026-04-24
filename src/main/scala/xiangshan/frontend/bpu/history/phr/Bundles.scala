@@ -42,6 +42,16 @@ object PhrPtr {
     apply(!ptr.flag, ptr.value)
 }
 
+class S1Train(implicit p: Parameters) extends PhrBundle with HasPhrParameters {
+  val valid:              Bool                   = Bool()
+  val taken:              Bool                   = Bool()
+  val startPc:            PrunedAddr             = PrunedAddr(VAddrBits)
+  val abtbValid:          Bool                   = Bool()
+  val abtbFirstTakenBrOH: Vec[Bool]              = Vec(NumAheadBtbPredictionEntries, Bool())
+  val ubtbPrediction:     Valid[Prediction]      = Valid(new Prediction)
+  val abtbPrediction:     Vec[Valid[Prediction]] = Vec(NumAheadBtbPredictionEntries, Valid(new Prediction))
+}
+
 class PhrUpdateData(implicit p: Parameters) extends PhrBundle with HasPhrParameters {
   val valid:     Bool                  = Bool()
   val taken:     Bool                  = Bool()
@@ -49,6 +59,11 @@ class PhrUpdateData(implicit p: Parameters) extends PhrBundle with HasPhrParamet
   val target:    PrunedAddr            = PrunedAddr(VAddrBits)
   val phrMeta:   PhrMeta               = new PhrMeta()
   val foldedPhr: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
+}
+
+class PhrUpdateResult(implicit p: Parameters) extends PhrBundle with HasPhrParameters {
+  val phrPtr:     PhrPtr = new PhrPtr
+  val phrLowBits: UInt   = UInt(PathHashHighWidth.W)
 }
 
 class PhrUpdate(implicit p: Parameters) extends PhrBundle {
