@@ -28,15 +28,20 @@ import xiangshan.frontend.bpu.BpuTrain
 // PHR: Predicted History Register
 class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with Helpers {
   class PhrIO(implicit p: Parameters) extends PhrBundle with HasPhrParameters {
-    val s0_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s1_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s2_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s3_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    // val s0_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    // val s1_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    // val s2_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    // val s3_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s0_oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s1_oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s2_oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s3_oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
     val phr:            Vec[Bool]             = Output(Vec(PhrHistoryLength, Bool()))
     val phrMeta:        PhrMeta               = Output(new PhrMeta)
     val train:          PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
     val commit:         Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
-    val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    // val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val trainOldFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
     val pathHist:       UInt                  = Output(UInt(MaxMicroTageHistWidth.W))
   }
   val io: PhrIO = IO(new PhrIO)
@@ -50,6 +55,12 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   private def getRedirectPhr(phrMeta: PhrMeta): UInt = {
     val redirectErrorPhr = getPhr(phrMeta.phrPtr)
     Cat(redirectErrorPhr(PhrHistoryLength - 1, PathHashHighWidth), phrMeta.phrLowBits)
+  }
+
+  private def getOldPhr(phrMeta: PhrMeta): UInt = {
+    val oldPhrPtr        = Mux(phrMeta.currIsTaken, phrMeta.phrPtr + Shamt.U, phrMeta.phrPtr)
+    val redirectErrorPhr = getPhr(oldPhrPtr)
+    Cat(redirectErrorPhr(PhrHistoryLength - 1, PathHashHighWidth), phrMeta.prevPhrLowBits)
   }
 
   /*
@@ -73,6 +84,20 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     RegEnable(s1_foldedPhrReg, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), s1_fire)
   private val s3_foldedPhrReg =
     RegEnable(s2_foldedPhrReg, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), s2_fire)
+
+  private val s0_oldFoldedPhr = WireInit(0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)))
+  private val s0_oldFoldedPhrReg =
+    RegEnable(s0_oldFoldedPhr, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), !s0_stall)
+  private val s1_oldFoldedPhrReg =
+    RegEnable(s0_oldFoldedPhr, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), s0_fire)
+  private val s2_oldFoldedPhrReg =
+    RegEnable(s1_oldFoldedPhrReg, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), s1_fire)
+  private val s3_oldFoldedPhrReg =
+    RegEnable(s2_oldFoldedPhrReg, 0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)), s2_fire)
+  private val s0_prevPhrLowBits = WireInit(0.U(PathHashHighWidth.W))
+  private val s1_prevPhrLowBits = RegEnable(s0_prevPhrLowBits, 0.U(PathHashHighWidth.W), s0_fire)
+  private val s0_currIsTaken    = WireInit(false.B)
+  private val s1_currIsTaken    = RegEnable(s0_currIsTaken, false.B, s0_fire)
 
   private val s0_phrPtr    = WireInit(0.U.asTypeOf(new PhrPtr))
   private val s0_phrPtrReg = RegEnable(s0_phrPtr, 0.U.asTypeOf(new PhrPtr), !s0_stall)
@@ -136,8 +161,10 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   private val shiftBits = hash(Shamt - 1, 0)
   private val hashHigh  = hash(PathHashWidth - 1, Shamt)
 
+  private val updateOldPhr = Wire(UInt(PhrHistoryLength.W))
+  updateOldPhr := getRedirectPhr(updateData.phrMeta)
+  dontTouch(updateOldPhr)
   when(updateData.valid) {
-    val updateOldPhr = getRedirectPhr(updateData.phrMeta)
     s0_pathHist := updateOldPhr(MaxMicroTageHistWidth - 1, 0).asBools
     phrPtr      := updateData.phrMeta.phrPtr
     s0_phrPtr   := updateData.phrMeta.phrPtr
@@ -145,6 +172,8 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
       phr((updateData.phrMeta.phrPtr + i.U).value) := updateData.phrMeta.phrLowBits(i - 1)
       s0_pathHist(i - 1)                           := updateData.phrMeta.phrLowBits(i - 1)
     }
+    s0_prevPhrLowBits := updateData.phrMeta.phrLowBits
+    s0_currIsTaken    := updateData.taken
     when(updateData.taken) {
       for (i <- 0 until Shamt) {
         phr((updateData.phrMeta.phrPtr - i.U).value) := shiftBits(Shamt - 1 - i)
@@ -163,6 +192,8 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   }.otherwise {
     s0_phrPtr   := phrPtr
     s0_pathHist := phrValue(MaxMicroTageHistWidth - 1, 0).asBools
+    s0_prevPhrLowBits := s1_prevPhrLowBits
+    s0_currIsTaken := s1_currIsTaken
   }
 
   /*
@@ -180,6 +211,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
         computeFoldedHist(redirectPhr, info.FoldedLength)(info.HistoryLength)
     }
     s0_foldedPhr := redirectData.foldedPhr
+    s0_oldFoldedPhr := redirectData.foldedPhr
     when(redirectData.taken) {
       s0_foldedPhr := redirectData.foldedPhr.update(
         VecInit(redirectPhr.asBools),
@@ -191,6 +223,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     }
   }.elsewhen(s3_override) {
     s0_foldedPhr := s3_foldedPhrReg
+    s0_oldFoldedPhr := s3_foldedPhrReg
     when(s3_overrideData.taken) {
       s0_foldedPhr := s3_foldedPhrReg.update(
         VecInit(getRedirectPhr(s3_overrideData.phrMeta).asBools),
@@ -202,6 +235,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     }
   }.elsewhen(s1_valid) {
     s0_foldedPhr := s1_foldedPhrReg
+    s0_oldFoldedPhr := s1_foldedPhrReg
     when(s1_overrideData.taken) {
       s0_foldedPhr := s1_foldedPhrReg.update(
         VecInit(getRedirectPhr(s1_overrideData.phrMeta).asBools),
@@ -213,6 +247,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     }
   }.otherwise {
     s0_foldedPhr := s0_foldedPhrReg
+    s0_oldFoldedPhr := s0_oldFoldedPhrReg
   }
 
   AllFoldedHistoryInfo.foreach { info =>
@@ -232,15 +267,44 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
       computeFoldedHist(predictHist, info.FoldedLength)(info.HistoryLength)
   }
 
+  private val predictOldHist = Wire(UInt(PhrHistoryLength.W))
+  predictOldHist := getOldPhr(bpTrain.meta.phr)
+  dontTouch(predictOldHist)
+  private val metaOldPhrFolded = WireInit(0.U.asTypeOf(new PhrAllFoldedHistories(AllFoldedHistoryInfo)))
+  AllFoldedHistoryInfo.foreach { info =>
+    metaOldPhrFolded.getHistWithInfo(info).foldedHist :=
+      computeFoldedHist(predictOldHist, info.FoldedLength)(info.HistoryLength)
+  }
+  private val testMetaOldPhrFolded = bpTrain.meta.phr.oldFoldHist
+  dontTouch(testMetaOldPhrFolded)
+  dontTouch(metaOldPhrFolded)
+  // metaOldPhrFolded.hist.zip(testMetaOldPhrFolded.hist).zipWithIndex.foreach {
+  //   case ((computed, expected), index) =>
+  //     val mismatch = computed.foldedHist =/= expected.foldedHist
+  //     XSError(
+  //       mismatch && bpTrainValid,
+  //       p"PHR Old Folded History Mismatch: index=${index} histLen=${computed.info.HistoryLength} foldedLen=${computed.info.FoldedLength} " +
+  //         p"computed=${Hexadecimal(computed.foldedHist)} expected=${Hexadecimal(expected.foldedHist)}\n"
+  //     )
+  // }
+
   io.phrMeta.phrPtr     := s1_phrPtr
   io.phrMeta.phrLowBits := s1_phrValue(PathHashHighWidth - 1, 0)
   io.phrMeta.predFoldedHist.foreach(_ := s1_foldedPhrReg)
+  io.phrMeta.currIsTaken := s1_currIsTaken
+  io.phrMeta.prevPhrLowBits := s1_prevPhrLowBits
+  io.phrMeta.oldFoldHist    := s1_oldFoldedPhrReg
   io.phr            := phr
-  io.s0_foldedPhr   := s0_foldedPhr
-  io.s1_foldedPhr   := s1_foldedPhrReg
-  io.s2_foldedPhr   := s2_foldedPhrReg
-  io.s3_foldedPhr   := s3_foldedPhrReg
-  io.trainFoldedPhr := metaPhrFolded
+  // io.s0_foldedPhr   := s0_foldedPhr
+  // io.s1_foldedPhr   := s1_foldedPhrReg
+  // io.s2_foldedPhr   := s2_foldedPhrReg
+  // io.s3_foldedPhr   := s3_foldedPhrReg
+  // io.trainFoldedPhr := metaPhrFolded
+  io.s0_oldFoldedPhr   := s0_oldFoldedPhr
+  io.s1_oldFoldedPhr   := s1_oldFoldedPhrReg
+  io.s2_oldFoldedPhr   := s2_oldFoldedPhrReg
+  io.s3_oldFoldedPhr   := s3_oldFoldedPhrReg
+  io.trainOldFoldedPhr := metaOldPhrFolded
   io.pathHist       := s1_pathHist // s1_phrValue(MaxMicroTageHistWidth - 1, 0)
   private val diffPhrValue = s1_pathHist =/= s1_phrValue(MaxMicroTageHistWidth - 1, 0)
   XSError(s0_fire && diffPhrValue, "PHR Mismatch: Data does not match reference")

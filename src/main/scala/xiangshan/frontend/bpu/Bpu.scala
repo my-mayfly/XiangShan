@@ -235,18 +235,18 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
 
   tage.io.fromMainBtb.result             := mbtb.io.result
   tage.io.fromMainBtb.s1_positions       := mbtb.io.s1_positions
-  tage.io.fromPhr.foldedPathHist         := phr.io.s0_foldedPhr
-  tage.io.fromPhr.foldedPathHistForTrain := phr.io.trainFoldedPhr
+  tage.io.fromPhr.foldedPathHist         := phr.io.s0_oldFoldedPhr
+  tage.io.fromPhr.foldedPathHistForTrain := phr.io.trainOldFoldedPhr
   tage.io.debug_trainValid               := io.fromFtq.train.valid // for perf counters
 
-  ittage.io.s1_foldedPhr   := phr.io.s1_foldedPhr
-  ittage.io.trainFoldedPhr := phr.io.trainFoldedPhr
+  ittage.io.s1_foldedPhr   := phr.io.s1_oldFoldedPhr
+  ittage.io.trainFoldedPhr := phr.io.trainOldFoldedPhr
 
   sc.io.mbtbResult          := mbtb.io.result
   sc.io.providerTakenCtrs   := tage.io.toSc.providerTakenCtrVec
-  sc.io.foldedPathHist      := phr.io.s0_foldedPhr
+  sc.io.foldedPathHist      := phr.io.s0_oldFoldedPhr
   sc.io.imli                := commonHR.io.s0_imli
-  sc.io.trainFoldedPathHist := phr.io.trainFoldedPhr
+  sc.io.trainFoldedPathHist := phr.io.trainOldFoldedPhr
   sc.io.commonHR            := commonHR.io.s0_commonHR
 
   s3_flush := redirect.valid
@@ -498,11 +498,11 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   phr.io.commit.valid := io.fromFtq.train.fire
   phr.io.commit.bits  := train
 
-  s0_foldedPhr   := phr.io.s0_foldedPhr
-  s1_foldedPhr   := phr.io.s1_foldedPhr
-  s2_foldedPhr   := phr.io.s2_foldedPhr
-  s3_foldedPhr   := phr.io.s3_foldedPhr
-  trainFoldedPhr := phr.io.trainFoldedPhr
+  // s0_foldedPhr   := phr.io.s0_foldedPhr
+  // s1_foldedPhr   := phr.io.s1_foldedPhr
+  // s2_foldedPhr   := phr.io.s2_foldedPhr
+  // s3_foldedPhr   := phr.io.s3_foldedPhr
+  // trainFoldedPhr := phr.io.trainFoldedPhr
   phrBits        := phr.io.phr.asUInt
 
   dontTouch(phrBits)

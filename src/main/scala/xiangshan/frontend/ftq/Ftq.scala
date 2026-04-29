@@ -321,13 +321,13 @@ class Ftq(implicit p: Parameters) extends FtqModule
 
   resolveQueue.io.bpuTrain.ready := !trainCache.valid || io.toBpu.train.fire
 
-  when(resolveQueue.io.bpuTrain.fire) {
+  when(resolveQueue.io.bpuTrain.fire && !redirect.valid) {
     trainCache.bits.meta     := metaQueueResolve(resolveQueue.io.bpuTrain.bits.ftqIdx.value)
     trainCache.bits.startPc  := resolveQueue.io.bpuTrain.bits.startPc
     trainCache.bits.branches := resolveQueue.io.bpuTrain.bits.branches
     trainCache.bits.perfMeta := perfQueue(resolveQueue.io.bpuTrain.bits.ftqIdx.value).bpuPerf
     trainCache.valid         := true.B
-  }.elsewhen(io.toBpu.train.fire) {
+  }.elsewhen(io.toBpu.train.fire || redirect.valid) {
     trainCache.valid := false.B
   }
 

@@ -71,6 +71,9 @@ class PhrUpdate(implicit p: Parameters) extends PhrBundle {
 class PhrMeta(implicit p: Parameters) extends PhrBundle {
   val phrPtr:     PhrPtr = new PhrPtr
   val phrLowBits: UInt   = UInt(PathHashHighWidth.W)
+  val currIsTaken: Bool = Bool()
+  val prevPhrLowBits: UInt = UInt(PathHashHighWidth.W)
+  val oldFoldHist: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
 
   // for debug
   val predFoldedHist: Option[PhrAllFoldedHistories] =
