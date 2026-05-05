@@ -36,6 +36,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     val train:          PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
     val s1Train:        S1Train               = Input(new S1Train)         // redirect from backend
     val commit:         Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
+    val oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
     val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
   }
   val io: PhrIO = IO(new PhrIO)
@@ -293,6 +294,14 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
     metaPhrFolded.getHistWithInfo(info).foldedHist :=
       computeFoldedHist(predictHist, info.FoldedLength)(info.HistoryLength)
   }
+  private val oldFoldedPhr = MuxCase(
+    s1_foldedPhrReg,
+    Seq(
+      redirectData.valid -> redirectData.foldedPhr,
+      s3_override        -> s3_foldedPhrReg,
+      s1_valid           -> s1_foldedPhrReg
+    )
+  )
 
   io.phrMeta.phrPtr     := s1_phrPtr
   io.phrMeta.phrLowBits := s1_phrValue(PathHashHighWidth - 1, 0)
@@ -303,6 +312,7 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   io.s2_foldedPhr   := s2_foldedPhrReg
   io.s3_foldedPhr   := s3_foldedPhrReg
   io.trainFoldedPhr := metaPhrFolded
+  io.oldFoldedPhr    := oldFoldedPhr
 
   // TODO: Currently unavailable，waiting for ftq commit info
   // commit time phr checker
