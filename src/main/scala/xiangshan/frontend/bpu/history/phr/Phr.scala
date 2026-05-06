@@ -27,17 +27,17 @@ import xiangshan.frontend.bpu.BpuTrain
 // PHR: Predicted History Register
 class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with Helpers {
   class PhrIO(implicit p: Parameters) extends PhrBundle with HasPhrParameters {
-    val s0_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s1_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s2_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val s3_foldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val phr:            Vec[Bool]             = Output(Vec(PhrHistoryLength, Bool()))
-    val phrMeta:        PhrMeta               = Output(new PhrMeta)
-    val train:          PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
-    val s1Train:        S1Train               = Input(new S1Train)         // redirect from backend
-    val commit:         Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
-    val oldFoldedPhr:   PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
-    val trainFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s0_foldedPhr:         PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s1_foldedPhr:         PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s2_foldedPhr:         PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val s3_foldedPhr:         PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val phr:                  Vec[Bool]             = Output(Vec(PhrHistoryLength, Bool()))
+    val phrMeta:              PhrMeta               = Output(new PhrMeta)
+    val train:                PhrUpdate             = Input(new PhrUpdate)       // redirect from backend
+    val s1Train:              S1Train               = Input(new S1Train)         // redirect from backend
+    val commit:               Valid[BpuTrain]       = Input(Valid(new BpuTrain)) // update from commit
+    val redirectOldFoldedPhr: PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
+    val trainFoldedPhr:       PhrAllFoldedHistories = Output(new PhrAllFoldedHistories(AllFoldedHistoryInfo))
   }
   val io: PhrIO = IO(new PhrIO)
 
@@ -306,13 +306,13 @@ class Phr(implicit p: Parameters) extends PhrModule with HasPhrParameters with H
   io.phrMeta.phrPtr     := s1_phrPtr
   io.phrMeta.phrLowBits := s1_phrValue(PathHashHighWidth - 1, 0)
   io.phrMeta.predFoldedHist.foreach(_ := s1_foldedPhrReg)
-  io.phr            := phr
-  io.s0_foldedPhr   := s0_foldedPhr
-  io.s1_foldedPhr   := s1_foldedPhrReg
-  io.s2_foldedPhr   := s2_foldedPhrReg
-  io.s3_foldedPhr   := s3_foldedPhrReg
-  io.trainFoldedPhr := metaPhrFolded
-  io.oldFoldedPhr    := oldFoldedPhr
+  io.phr                  := phr
+  io.s0_foldedPhr         := s0_foldedPhr
+  io.s1_foldedPhr         := s1_foldedPhrReg
+  io.s2_foldedPhr         := s2_foldedPhrReg
+  io.s3_foldedPhr         := s3_foldedPhrReg
+  io.trainFoldedPhr       := metaPhrFolded
+  io.redirectOldFoldedPhr := redirectData.foldedPhr
 
   // TODO: Currently unavailable，waiting for ftq commit info
   // commit time phr checker
