@@ -19,6 +19,7 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xiangshan.XSCoreParamsKey
+import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.SaturateCounter
 import xiangshan.frontend.bpu.SaturateCounterFactory
 import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
@@ -145,4 +146,28 @@ class MicroTageTrain(numSets: Int)(implicit p: Parameters) extends MicroTageBund
   val t1_tag:        UInt                       = Input(UInt(MaxTagLen.W))
   val t1_update:     Valid[MicroTageUpdateInfo] = Input(Valid(new MicroTageUpdateInfo))
   val t1_alloc:      Valid[MicroTageAllocInfo]  = Input(Valid(new MicroTageAllocInfo))
+}
+
+class MicroTageS1PCSource(implicit p: Parameters) extends MicroTageBundle {
+  val chooseUbtb:        Bool = Bool()
+  val chooseAbtb:        Bool = Bool()
+  val chooseURAS:        Bool = Bool()
+  val chooseFallThrough: Bool = Bool()
+
+  val ubtbTarget:        PrunedAddr = new PrunedAddr(VAddrBits)
+  val abtbTarget:        PrunedAddr = new PrunedAddr(VAddrBits)
+  val urasTarget:        PrunedAddr = new PrunedAddr(VAddrBits)
+  val fallThroughTarget: PrunedAddr = new PrunedAddr(VAddrBits)
+}
+
+class MicroTageS3PCSource(implicit p: Parameters) extends MicroTageBundle {
+  val useRAS:    Bool      = Bool()
+  val useITTage: Bool      = Bool()
+  val useMbtb:   Bool      = Bool()
+  val useMbtbOH: Vec[Bool] = Vec(NumBtbResultEntries, Bool())
+
+  val ittageTarget:      PrunedAddr      = new PrunedAddr(VAddrBits)
+  val rasTarget:         PrunedAddr      = new PrunedAddr(VAddrBits)
+  val fallThroughTarget: PrunedAddr      = new PrunedAddr(VAddrBits)
+  val mbtbTargetVec:     Vec[PrunedAddr] = Vec(NumBtbResultEntries, new PrunedAddr(VAddrBits))
 }

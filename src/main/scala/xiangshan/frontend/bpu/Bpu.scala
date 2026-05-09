@@ -202,21 +202,6 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   abtb.io.redirectValid := redirect.valid
   abtb.io.overrideValid := s3_override
 
-  // utage.io.foldedPathHist         := phr.io.oldFoldedPhr
-  // utage.io.foldedPathHistForTrain := phr.io.trainFoldedPhr
-  utage.io.abtbPrediction := abtb.io.abtbResult
-  utage.io.abtbPosVec     := abtb.io.abtbPos
-  utage.io.overrideValid  := s3_override
-  utage.io.redirectValid  := redirect.valid
-
-  utage.io.normalPathHist   := phr.io.s1_foldedPhr
-  utage.io.redirectPathHist := phr.io.redirectOldFoldedPhr
-  utage.io.overridePathHist := phr.io.s3_foldedPhr
-
-  utage.io.normalStartPc   := s1_prediction.target
-  utage.io.redirectStartPc := redirect.bits.target
-  utage.io.overrideStartPc := s3_prediction.target
-
   // uras
   uras.io.specIn.startPc                := s1_startPc
   uras.io.specIn.cfiPosition            := s1_prediction.cfiPosition
@@ -551,6 +536,43 @@ class Bpu(implicit p: Parameters) extends BpuModule with HalfAlignHelper {
   commonHR.io.redirect.taken          := redirect.bits.taken
   commonHR.io.redirect.attribute      := redirect.bits.attribute
   commonHR.io.redirect.meta           := redirect.bits.meta.commonHRMeta
+
+  utage.io.abtbPrediction := abtb.io.abtbResult
+  utage.io.abtbPosVec     := abtb.io.abtbPos
+  utage.io.overrideValid  := s3_override
+  utage.io.redirectValid  := redirect.valid
+
+  utage.io.normalPathHist   := phr.io.s1_foldedPhr
+  utage.io.redirectPathHist := phr.io.redirectOldFoldedPhr
+  utage.io.overridePathHist := phr.io.s3_foldedPhr
+
+  private val s1_useAbtb =
+    s1_abtbResult.taken && s1_abtbValid && !(s1_abtbResult.attribute.isReturn && uras.io.specOut.isCanUse)
+  private val s1_useUbtb =
+    s1_ubtbPrediction.taken && !s1_abtbValid && !(s1_ubtbPrediction.attribute.isReturn && uras.io.specOut.isCanUse)
+  private val s1_useURAS =
+    (s1_abtbResult.taken && s1_abtbValid && (s1_abtbResult.attribute.isReturn && uras.io.specOut.isCanUse)) ||
+      (s1_ubtbPrediction.taken && !s1_abtbValid && (s1_ubtbPrediction.attribute.isReturn && uras.io.specOut.isCanUse))
+  private val s1_useFallThrough = (s1_abtbValid && !s1_abtbResult.taken) || (!s1_abtbValid && !s1_ubtbPrediction.taken)
+  utage.io.normalPcSource.ubtbTarget        := ubtb.io.prediction.bits.target
+  utage.io.normalPcSource.abtbTarget        := s1_abtbFirstTakenBr.target
+  utage.io.normalPcSource.urasTarget        := uras.io.specOut.retTarget
+  utage.io.normalPcSource.fallThroughTarget := fallThrough.io.prediction.target
+  // The choose signal uses one-hot encoding with mutually exclusive states. (For timing.)
+  utage.io.normalPcSource.chooseUbtb        := s1_useUbtb
+  utage.io.normalPcSource.chooseAbtb        := s1_useAbtb
+  utage.io.normalPcSource.chooseURAS        := s1_useURAS
+  utage.io.normalPcSource.chooseFallThrough := s1_useFallThrough
+
+  utage.io.overridePcSource.ittageTarget      := ittage.io.prediction.target
+  utage.io.overridePcSource.rasTarget         := ras.io.topRetAddr
+  utage.io.overridePcSource.fallThroughTarget := s3_fallThroughPrediction.target
+  utage.io.overridePcSource.mbtbTargetVec     := VecInit(s3_mbtbResult.map(_.bits.target))
+  // One-hot encoding is optional here due to loose timing requirements.
+  utage.io.overridePcSource.useRAS    := s3_taken && s3_useRas
+  utage.io.overridePcSource.useITTage := s3_taken && s3_useIttage
+  utage.io.overridePcSource.useMbtb   := s3_taken
+  utage.io.overridePcSource.useMbtbOH := s3_firstTakenBranchOH
 
   // Power-on reset
   private val powerOnResetState = RegInit(true.B)
