@@ -658,7 +658,7 @@ class Ifu(implicit p: Parameters) extends IfuModule
   // otherwise, we only have rvcException, so select its offset
   io.toIBuffer.bits.exceptionOffset := Mux(
     s3_icacheMeta(0).exception.hasException,
-    0.U,
+    s3_shiftNum.pad(log2Ceil(IBufferEnqueueWidth)),
     s3_rvcExceptionOffset
   )
 
@@ -733,7 +733,7 @@ class Ifu(implicit p: Parameters) extends IfuModule
     io.toIBuffer.bits.exceptionType := s3_icacheMeta(0).exception || uncacheException || uncacheRvcException
     // execption can happen in next page only when cross page.
     io.toIBuffer.bits.exceptionCrossPage := prevUncacheCrossPage && uncacheException.hasException
-    io.toIBuffer.bits.exceptionOffset    := 0.U
+    io.toIBuffer.bits.exceptionOffset    := s3_shiftNum.pad(log2Ceil(IBufferEnqueueWidth))
 
     // The s3_alignBlockStartPos vector marks the position of the first instruction.
     // In uncache scenarios, only a single instruction is allowed for execution,
