@@ -93,7 +93,7 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   private val shiftNum              = io.req.bits.shiftNum
   private val (pds, pc, jumpOffset) = (io.req.bits.instrPds, io.req.bits.instrPc, io.req.bits.instrJumpOffset)
 
-  private val jalFaultVec, jalrFaultVec, retFaultVec, notCfiTaken, targetFaultVec =
+  private val jalFaultVec, retFaultVec, notCfiTaken, targetFaultVec =
     Wire(Vec(IBufferEnqueueWidth, Bool()))
 
   /** Remask faults can occur alongside other faults, whereas other faults are mutually exclusive.
@@ -107,11 +107,11 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   jalFaultVec := VecInit(pds.zipWithIndex.map { case (pd, i) =>
     pd.brAttribute.isDirect && instrValid(i) && !isPredTaken(i) && !ignore(i)
   })
-  jalrFaultVec := VecInit(pds.zipWithIndex.map { case (pd, i) =>
-    pd.brAttribute.isIndirect && !pd.brAttribute.hasPop && instrValid(i) && !isPredTaken(i) && !ignore(i)
-  })
+  // jalrFaultVec := VecInit(pds.zipWithIndex.map { case (pd, i) =>
+  //   pd.brAttribute.isIndirect && !pd.brAttribute.hasPop && instrValid(i) && !isPredTaken(i) && !ignore(i)
+  // })
   retFaultVec := VecInit(pds.zipWithIndex.map { case (pd, i) =>
-    pd.brAttribute.hasPop && instrValid(i) && !isPredTaken(i) && !ignore(i)
+    pd.brAttribute.isReturn && instrValid(i) && !isPredTaken(i) && !ignore(i)
   })
   notCfiTaken := VecInit(pds.zipWithIndex.map { case (pd, i) =>
     instrValid(i) && pd.notCFI && isPredTaken(i) && !ignore(i)
@@ -129,7 +129,7 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
 
   private val remaskFault =
     VecInit((0 until IBufferEnqueueWidth).map(i =>
-      jalFaultVec(i) || jalrFaultVec(i) || retFaultVec(i) || invalidTaken(i) || notCfiTaken(i)
+      jalFaultVec(i) || retFaultVec(i) || invalidTaken(i) || notCfiTaken(i)
     ))
 
   // Timing optimization: prefixOr is implemented as a parallel prefix tree (recursive bisection),
@@ -173,7 +173,7 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
 
   private val mispredIdx = WireDefault(0.U.asTypeOf(ValidUndirectioned(UInt(log2Ceil(IBufferEnqueueWidth).W))))
   private val stage1Fault = VecInit.tabulate(IBufferEnqueueWidth)(i =>
-    jalFaultVec(i) || jalrFaultVec(i) || retFaultVec(i) || notCfiTaken(i) || invalidTaken(i)
+    jalFaultVec(i) || retFaultVec(i) || notCfiTaken(i) || invalidTaken(i)
   )
   mispredIdx.valid := ParallelOR(stage1Fault)
   mispredIdx.bits  := ParallelPriorityEncoder(stage1Fault)
@@ -229,8 +229,8 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   io.resp.stage2Out.checkerRedirect.bits.endOffset := endOffsetNext
 
   // --------- These registers are only for performance debugging purposes ---------------------/
-  private val jalFaultVecNext    = RegEnable(jalFaultVec, io.req.valid)
-  private val jalrFaultVecNext   = RegEnable(jalrFaultVec, io.req.valid)
+  private val jalFaultVecNext = RegEnable(jalFaultVec, io.req.valid)
+  // private val jalrFaultVecNext   = RegEnable(jalrFaultVec, io.req.valid)
   private val retFaultVecNext    = RegEnable(retFaultVec, io.req.valid)
   private val notCFITakenNext    = RegEnable(notCfiTaken, io.req.valid)
   private val targetFaultVecNext = RegEnable(targetFaultVec, io.req.valid)
@@ -238,8 +238,8 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   private val faultType = MuxCase(
     PreDecodeFaultType.NoFault,
     Seq(
-      jalFaultVecNext(mispredIdxNext.bits)    -> PreDecodeFaultType.JalFault,
-      jalrFaultVecNext(mispredIdxNext.bits)   -> PreDecodeFaultType.JalrFault,
+      jalFaultVecNext(mispredIdxNext.bits) -> PreDecodeFaultType.JalFault,
+      // jalrFaultVecNext(mispredIdxNext.bits)   -> PreDecodeFaultType.JalrFault,
       retFaultVecNext(mispredIdxNext.bits)    -> PreDecodeFaultType.RetFault,
       notCFITakenNext(mispredIdxNext.bits)    -> PreDecodeFaultType.NotCfiFault,
       targetFaultVecNext(mispredIdxNext.bits) -> PreDecodeFaultType.TargetFault,
