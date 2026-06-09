@@ -145,14 +145,14 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
 
   private val fixedTwoFetchFirstTaken = VecInit(pds.zipWithIndex.map { case (pd, i) =>
     instrValid(i) && fixedRange(i) && (
-      pd.brAttribute.isIndirect || pd.brAttribute.isDirect ||
+      pd.brAttribute.isReturn || pd.brAttribute.isDirect ||
         (isPredTaken(i) && !selectFetchBlock(i) && !pd.notCFI)
     ) && !ignore(i)
   })
 
   private val fixedTwoFetchSecondTaken = VecInit(pds.zipWithIndex.map { case (pd, i) =>
     instrValid(i) && fixedRange(i) && (
-      pd.brAttribute.isIndirect || pd.brAttribute.isDirect ||
+      pd.brAttribute.isReturn || pd.brAttribute.isDirect ||
         (isPredTaken(i) && selectFetchBlock(i) && !pd.notCFI)
     ) && !ignore(i)
   })
