@@ -103,7 +103,7 @@ class InstrBoundary(implicit p: Parameters) extends IfuModule with PreDecodeHelp
         Cat(data(i + 1), data(i))
     }
 
-    instr.isRvc    := isStart && maybeRvc(i)
+    instr.isRvc := isStart && maybeRvc(i)
     // Not involved in the instruction delimiting logic; timing impact should be controllable.
     val fixedBlockSel = blockSel(i) || (crossBlockFallThrough && !maybeRvc(i))
     instr.blockSel := fixedBlockSel
