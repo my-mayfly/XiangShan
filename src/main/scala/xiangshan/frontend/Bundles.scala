@@ -118,10 +118,10 @@ class FtqToICacheIO(implicit p: Parameters) extends FrontendBundle {
 }
 
 class ICacheToIfuIO(implicit p: Parameters) extends FrontendBundle {
-  val req:        DecoupledIO[Vec[MainPipeToIfuReq]] = DecoupledIO(Vec(FetchPorts, new MainPipeToIfuReq))
-  val topdown:    ICacheTopdownInfo                  = Output(new ICacheTopdownInfo)
-  val perf:       ICachePerfInfo                     = Output(new ICachePerfInfo)
-  val fetchReady: Bool                               = Output(Bool())
+  val req:        DecoupledIO[MainPipeToIfuReq] = DecoupledIO(new MainPipeToIfuReq)
+  val topdown:    ICacheTopdownInfo             = Output(new ICacheTopdownInfo)
+  val perf:       ICachePerfInfo                = Output(new ICachePerfInfo)
+  val fetchReady: Bool                          = Output(Bool())
 }
 
 class IfuToInstrUncacheIO(implicit p: Parameters) extends FrontendBundle {
