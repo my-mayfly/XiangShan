@@ -106,19 +106,7 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   private val s0_wayLookupEntry = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.entry))
   private val s0_exceptionInfo  = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.exceptionEntry))
   private val s0_wayMask        = VecInit(s0_wayLookupEntry.map(_.waymask))
-  private val s0_firstBlockRange = Wire(UInt(MaxInstNumPerBlock.W))
-  private val s0_totalBlockRange = Wire(UInt(MaxInstNumPerBlock.W))
-  private val s0_firstFetchSize  = s0_req(0).takenCfiOffset.bits +& 1.U
-  private val s0_secondFetchSize = s0_req(1).takenCfiOffset.bits +& 1.U
-  private val s0_totalFetchSize  = s0_secondFetchSize +& s0_firstFetchSize
-  private val s0_maybeRvcShiftInfo = genMaybeRvcShiftInfo(s0_req, s0_wayLookupEntry, s0_firstFetchSize)
-
-  s0_firstBlockRange := genInstRange(s0_firstFetchSize)
-  s0_totalBlockRange := Mux(
-    s0_req(1).valid,
-    genInstRange(s0_totalFetchSize),
-    s0_firstBlockRange
-  )
+  private val s0_maybeRvcShiftInfo = genMaybeRvcShiftInfo(s0_req, s0_wayLookupEntry)
 
   s0_flush := io.flush || io.flushFromBpu.shouldFlushByStage3(s0_ftqIdx, s0_valid)
 
@@ -154,15 +142,28 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   private val s1_exceptionInfo  = RegEnable(s0_exceptionInfo, s0_fire)
   private val s1_twoFetchValid  = RegEnable(s0_req(1).valid, s0_fire)
   private val s1_maybeRvcShiftInfo = RegEnable(s0_maybeRvcShiftInfo, s0_fire)
-  private val s1_firstBlockRange   = RegEnable(s0_firstBlockRange, s0_fire)
-  private val s1_totalBlockRange   = RegEnable(s0_totalBlockRange, s0_fire)
-  private val s1_shiftNum          = s1_maybeRvcShiftInfo.shiftNum
-  private val s1_shiftFlag         = s1_maybeRvcShiftInfo.shiftFlag
-  private val s1_shiftMaybeRvcMap  = s1_maybeRvcShiftInfo.shiftMaybeRvcMap
-  private val s1_rangeVec          = s1_maybeRvcShiftInfo.rangeVec
-  private val s1_sramShiftMaybeRvc =
-    shiftSramMaybeRvcVec(s1_shiftMaybeRvcMap, s1_shiftNum, s1_shiftFlag, secondShift = true)
-
+  private val s1_firstBlockRange   = s1_maybeRvcShiftInfo.firstBlockRange
+  private val s1_totalBlockRange   = s1_maybeRvcShiftInfo.totalBlockRange
+  private val s1_shiftNum             = s1_maybeRvcShiftInfo.shiftNum
+  private val s1_shiftFlag            = s1_maybeRvcShiftInfo.shiftFlag
+  private val s1_fineShiftMaybeRvcMap = s1_maybeRvcShiftInfo.fineShiftMaybeRvcMap
+  private val s1_rangeVec             = s1_maybeRvcShiftInfo.rangeVec
+  // Finish maybeRvc alignment with the high bits after the s0 fine shift.
+  private val s1_coarseShiftNum = VecInit(
+    s1_shiftNum.map(
+      shift => Cat(shift(log2Ceil(MaxInstNumPerBlock) - 1, MaybeRvcFineShiftBits), 0.U(MaybeRvcFineShiftBits.W))
+    )
+  )
+  private val s1_sramShiftMaybeRvc = VecInit(
+    VecInit(
+      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(0), s1_coarseShiftNum(0), leftShift = false.B),
+      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(1), s1_coarseShiftNum(1), leftShift = true.B)
+    ),
+    VecInit(
+      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(2), s1_coarseShiftNum(2), leftShift = !s1_shiftFlag),
+      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(3), s1_coarseShiftNum(3), leftShift = true.B)
+    )
+  )
 
   private val s1_wayMask = VecInit(s1_wayLookupEntry.map(_.waymask))
 
@@ -212,6 +213,10 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   })
   private val s1_mshrDatas       = fromMiss.bits.data.asTypeOf(Vec(DataBanks, UInt(ICacheDataBits.W)))
   private val s1_mshrMaybeRvcMap = fromMiss.bits.maybeRvcMap
+
+  // MSHR returns one raw cache-line maybeRvcMap, so align it in one step according to
+  // the hit request and line. This mirrors the four SRAM alignment cases without the
+  // s0/s1 fine/coarse split.
   private val s1_shiftMshrMaybeRvc = Wire(UInt(MaxInstNumPerBlock.W))
   s1_shiftMshrMaybeRvc := Mux(
     s1_mshrValid(0).reduce(_ || _),

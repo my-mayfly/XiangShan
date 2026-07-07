@@ -30,6 +30,7 @@ trait HasIfuParameters extends HasFrontendParameters {
   def PcCutPoint:    Int = ifuParameters.PcCutPoint.getOrElse((VAddrBits / 4) - 1)
   def IfuAlignWidth: Int = frontendParameters.ibufferParameters.NumWriteBank
   def IfuIdxWidth:   Int = log2Ceil(IBufferEnqueueWidth)
+  def NumCacheDataDuplicate: Int = 2
 
   require(PcCutPoint > 0 && PcCutPoint < VAddrBits, s"PcCutPoint($PcCutPoint) must be in range (0, $VAddrBits)")
 }

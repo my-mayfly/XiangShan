@@ -58,6 +58,12 @@ class LastHalfEntry(implicit p: Parameters) extends IfuBundle {
   val middlePC: PrunedAddr = PrunedAddr(VAddrBits)
 }
 
+class EndHalfRviInfo(implicit p: Parameters) extends IfuBundle {
+  val isHalfRvi: Bool       = Bool()
+  val pc:        PrunedAddr = PrunedAddr(VAddrBits)
+  val data:      UInt       = UInt(16.W)
+}
+
 class InstrIndexEntry(implicit p: Parameters) extends IfuBundle {
   val valid: Bool = Bool()
   val value: UInt = UInt(log2Ceil(ICacheLineBytes / 2).W)
@@ -108,10 +114,6 @@ class IfuData(implicit p: Parameters) extends IfuBundle with HasICacheParameters
       (fromReq0, req0Idx, req1Idx)
     }
 
-    // this.data := VecInit((0 until FetchBlockInstNum).map { i =>
-    //   val (fromReq0, req0Idx, req1Idx) = getDataIndex(i)
-    //   Mux(fromReq0, dupData(0)(req0Idx), Mux(req.info(1).valid, dupData(1)(req1Idx), 0.U.asTypeOf(dupData(1)(req1Idx))))
-    // })
     this.index := VecInit((0 until FetchBlockInstNum).map { i =>
       val (fromReq0, req0Idx, req1Idx) = getDataIndex(i)
       Mux(fromReq0, req0Idx, req1Idx)
@@ -125,38 +127,6 @@ class IfuData(implicit p: Parameters) extends IfuBundle with HasICacheParameters
     this
   }
 
-  // def fromICacheReq(req: Vec[MainPipeToIfuReq]): IfuData = {
-  //   val reqStartOffset = req.map(_.startVAddr(5, 1))
-  //
-  //   val totalSize = req(0).size +& Mux(req(1).valid, req(1).size, 0.U.asTypeOf(req(1).size))
-  //
-  //   val dupData = VecInit((0 until MaxFetchReqNum).map { i =>
-  //     Cat(req(i).data, req(i).data).asTypeOf(Vec(FetchBlockInstNum * 2, UInt(16.W)))
-  //   })
-  //   val dupMaybeRvcMap = VecInit((0 until MaxFetchReqNum).map(i => Cat(req(i).maybeRvcMap, req(i).maybeRvcMap)))
-  //
-  //   def getDataIndex(i: Int): (Bool, UInt, UInt) = {
-  //     val fromReq0 = i.U < req(0).size
-  //     val req0Idx  = (reqStartOffset(0) +& i.U)(log2Ceil(FetchBlockInstNum * 2) - 1, 0)
-  //     val req1Idx  = (reqStartOffset(1) +& (i.U - req(0).size))(log2Ceil(FetchBlockInstNum * 2) - 1, 0)
-  //     (fromReq0, req0Idx, req1Idx)
-  //   }
-  //
-  //   this.data := VecInit((0 until FetchBlockInstNum).map { i =>
-  //     val (fromReq0, req0Idx, req1Idx) = getDataIndex(i)
-  //     Mux(fromReq0, dupData(0)(req0Idx), Mux(req(1).valid, dupData(1)(req1Idx), 0.U.asTypeOf(dupData(1)(req1Idx))))
-  //   })
-  //
-  //   this.maybeRvcMap := VecInit((0 until FetchBlockInstNum).map { i =>
-  //     val (fromReq0, req0Idx, req1Idx) = getDataIndex(i)
-  //     Mux(fromReq0, dupMaybeRvcMap(0)(req0Idx), Mux(req(1).valid, dupMaybeRvcMap(1)(req1Idx), 0.U(1.W)))
-  //   }).asUInt
-  //
-  //   this.range    := VecInit((0 until FetchBlockInstNum).map(i => i.U < totalSize)).asUInt
-  //   this.blockSel := VecInit((0 until FetchBlockInstNum).map(i => req(1).valid && i.U >= req(0).size)).asUInt
-  //
-  //   this
-  // }
 }
 
 class InstSlot extends Bundle {

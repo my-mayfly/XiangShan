@@ -150,6 +150,7 @@ trait HasICacheParameters extends HasFrontendParameters // scalastyle:ignore num
 
   // mainPipe
   def EnableCorruptRefetch: Boolean = icacheParameters.EnableCorruptRefetch
+  def MaybeRvcFineShiftBits: Int = 2
 
   // submodule enable
   def EnableCtrlUnit: Boolean = icacheParameters.EnableCtrlUnit

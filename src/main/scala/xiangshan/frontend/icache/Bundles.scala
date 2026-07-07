@@ -76,10 +76,12 @@ class MetaInfo(implicit p: Parameters) extends ICacheBundle {
 }
 
 class MaybeRvcShiftInfo(implicit p: Parameters) extends ICacheBundle {
-  val shiftNum:         Vec[UInt] = Vec(MaxFetchLineNum, UInt(log2Ceil(MaxInstNumPerBlock).W))
-  val shiftFlag:        Bool      = Bool()
-  val shiftMaybeRvcMap: Vec[UInt] = Vec(MaxFetchLineNum, UInt(MaxInstNumPerBlock.W))
-  val rangeVec:         Vec[UInt] = Vec(MaxFetchLineNum, UInt(MaxInstNumPerBlock.W))
+  val shiftNum:             Vec[UInt] = Vec(MaxFetchLineNum, UInt(log2Ceil(MaxInstNumPerBlock).W))
+  val shiftFlag:            Bool      = Bool()
+  val fineShiftMaybeRvcMap: Vec[UInt] = Vec(MaxFetchLineNum, UInt(MaxInstNumPerBlock.W))
+  val rangeVec:             Vec[UInt] = Vec(MaxFetchLineNum, UInt(MaxInstNumPerBlock.W))
+  val firstBlockRange:      UInt      = UInt(MaxInstNumPerBlock.W)
+  val totalBlockRange:      UInt      = UInt(MaxInstNumPerBlock.W)
 }
 
 /* ***** Array write ***** */
