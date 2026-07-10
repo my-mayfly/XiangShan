@@ -115,12 +115,12 @@ trait ICacheMetaHelper extends HasICacheParameters {
 trait ICacheDataHelper extends HasICacheParameters {
   def shiftMaybeRvc(
       maybeRvcMap: UInt,
-      shiftNum: UInt,
-      leftShift: Bool
+      shiftNum:    UInt,
+      leftShift:   Bool
   ): UInt = Mux(leftShift, maybeRvcMap << shiftNum, maybeRvcMap >> shiftNum)(MaxInstNumPerBlock - 1, 0)
 
   def genMaybeRvcShiftInfo(
-      req: Vec[FtqFetchRequest],
+      req:            Vec[FtqFetchRequest],
       wayLookupEntry: Vec[WayLookupEntry]
   ): MaybeRvcShiftInfo = {
     val info = Wire(new MaybeRvcShiftInfo)
@@ -152,39 +152,39 @@ trait ICacheDataHelper extends HasICacheParameters {
     info.shiftNum(3) := ~reqStart(1) + req(0).takenCfiOffset.bits
 
     // Apply the low bits in s0 so the registered map only needs coarse shifts in s1.
-    info.fineShiftMaybeRvcMap(0) := shiftMaybeRvc(
+    info.sramShiftMaybeRvc(0)(0) := shiftMaybeRvc(
       wayLookupEntry(0).maybeRvcMap(0),
-      info.shiftNum(0)(MaybeRvcFineShiftBits - 1, 0),
+      info.shiftNum(0),
       leftShift = false.B
     )
-    info.fineShiftMaybeRvcMap(1) :=
+    info.sramShiftMaybeRvc(0)(1) :=
       shiftMaybeRvc(
         Cat(wayLookupEntry(0).maybeRvcMap(1), 0.U(1.W)),
-        info.shiftNum(1)(MaybeRvcFineShiftBits - 1, 0),
+        info.shiftNum(1),
         leftShift = true.B
       )
-    info.fineShiftMaybeRvcMap(2) :=
+    info.sramShiftMaybeRvc(1)(0) :=
       shiftMaybeRvc(
         wayLookupEntry(1).maybeRvcMap(0),
-        info.shiftNum(2)(MaybeRvcFineShiftBits - 1, 0),
+        info.shiftNum(2),
         leftShift = !info.shiftFlag
       )
-    info.fineShiftMaybeRvcMap(3) :=
+    info.sramShiftMaybeRvc(1)(1) :=
       shiftMaybeRvc(
         Cat(wayLookupEntry(1).maybeRvcMap(1), 0.U(2.W)),
-        info.shiftNum(3)(MaybeRvcFineShiftBits - 1, 0),
+        info.shiftNum(3),
         leftShift = true.B
       )
 
-    info.rangeVec(0) := genInstRange(
+    info.maybeRvcMaskVec(0)(0) := genInstRange(
       Mux(
         req(0).isCrossLine,
         MaxInstNumPerBlock.U - info.shiftNum(0),
         firstFetchSize
       )
     )
-    info.rangeVec(1) := firstBlockRange & ~info.rangeVec(0)
-    info.rangeVec(2) := Mux(
+    info.maybeRvcMaskVec(0)(1) := firstBlockRange & ~info.maybeRvcMaskVec(0)(0)
+    info.maybeRvcMaskVec(1)(0) := Mux(
       req(1).valid,
       genInstRange(
         firstFetchSize +& Mux(
@@ -195,12 +195,16 @@ trait ICacheDataHelper extends HasICacheParameters {
       ) & ~firstBlockRange,
       0.U
     )
-    info.rangeVec(3) := Mux(req(1).valid, totalBlockRange & ~(firstBlockRange | info.rangeVec(2)), 0.U)
+    info.maybeRvcMaskVec(1)(1) := Mux(
+      req(1).valid,
+      totalBlockRange & ~(firstBlockRange | info.maybeRvcMaskVec(1)(0)),
+      0.U
+    )
     info
   }
 
   def genInstRange(size: UInt): UInt =
-    Mux(size >= MaxInstNumPerBlock.U, (~0.U(MaxInstNumPerBlock.W)), UIntToMask(size, MaxInstNumPerBlock))
+    Mux(size >= MaxInstNumPerBlock.U, ~0.U(MaxInstNumPerBlock.W), UIntToMask(size, MaxInstNumPerBlock))
 
   def getBankIdx(blkOffset: UInt): UInt =
     (blkOffset >> rowOffBits).asUInt

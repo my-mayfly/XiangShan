@@ -48,7 +48,7 @@ class InstrBoundary(implicit p: Parameters) extends IfuModule with PreDecodeHelp
   // We compute the boundaries of instructions in the first half of the fetch block directly, and compute the boundaries
   // of instructions in the latter half in two cases in parallel. Then we can choose the correct case according to
   // whether the last instruction in the first half is a 16-bit instruction or not.
-  private val boundary = WireInit(VecInit(Seq.fill(FetchBlockInstNum)(false.B)))
+  private val boundary            = WireInit(VecInit(Seq.fill(FetchBlockInstNum)(false.B)))
   private val latterHalfBoundary1 = WireInit(VecInit(Seq.fill(FetchBlockInstNum)(false.B)))
   private val latterHalfBoundary2 = WireInit(VecInit(Seq.fill(FetchBlockInstNum)(false.B)))
 

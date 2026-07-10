@@ -103,9 +103,9 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
   private val s0_ftqIdx = s0_req(0).ftqIdx
 
-  private val s0_wayLookupEntry = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.entry))
-  private val s0_exceptionInfo  = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.exceptionEntry))
-  private val s0_wayMask        = VecInit(s0_wayLookupEntry.map(_.waymask))
+  private val s0_wayLookupEntry    = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.entry))
+  private val s0_exceptionInfo     = VecInit(io.fromWayLookup.bits.wayLookupInfo.map(_.exceptionEntry))
+  private val s0_wayMask           = VecInit(s0_wayLookupEntry.map(_.waymask))
   private val s0_maybeRvcShiftInfo = genMaybeRvcShiftInfo(s0_req, s0_wayLookupEntry)
 
   s0_flush := io.flush || io.flushFromBpu.shouldFlushByStage3(s0_ftqIdx, s0_valid)
@@ -127,43 +127,19 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
     readReq.bits.waymask := s0_wayMask(i)
     readReq.bits.vSetIdx := s0_req(i).vSetIdx
   }
-
-  /* ICache Stage 1
-   * - Pmp check (to be removed)
-   * - get Data Sram read responses (latched for pipeline stop)
-   * - monitor missUnit response port
-   * - Ecc check
-   * - send request to Mshr if ICache miss
-   * - response to Ifu
-   */
-  private val s1_valid          = ValidHold(s0_fire, s1_fire, s1_flush)
-  private val s1_req            = RegEnable(s0_req, s0_fire)
-  private val s1_wayLookupEntry = RegEnable(s0_wayLookupEntry, s0_fire)
-  private val s1_exceptionInfo  = RegEnable(s0_exceptionInfo, s0_fire)
-  private val s1_twoFetchValid  = RegEnable(s0_req(1).valid, s0_fire)
+  private val s1_valid             = ValidHold(s0_fire, s1_fire, s1_flush)
+  private val s1_req               = RegEnable(s0_req, s0_fire)
+  private val s1_wayLookupEntry    = RegEnable(s0_wayLookupEntry, s0_fire)
+  private val s1_exceptionInfo     = RegEnable(s0_exceptionInfo, s0_fire)
+  private val s1_twoFetchValid     = RegEnable(s0_req(1).valid, s0_fire)
   private val s1_maybeRvcShiftInfo = RegEnable(s0_maybeRvcShiftInfo, s0_fire)
   private val s1_firstBlockRange   = s1_maybeRvcShiftInfo.firstBlockRange
   private val s1_totalBlockRange   = s1_maybeRvcShiftInfo.totalBlockRange
-  private val s1_shiftNum             = s1_maybeRvcShiftInfo.shiftNum
-  private val s1_shiftFlag            = s1_maybeRvcShiftInfo.shiftFlag
-  private val s1_fineShiftMaybeRvcMap = s1_maybeRvcShiftInfo.fineShiftMaybeRvcMap
-  private val s1_rangeVec             = s1_maybeRvcShiftInfo.rangeVec
-  // Finish maybeRvc alignment with the high bits after the s0 fine shift.
-  private val s1_coarseShiftNum = VecInit(
-    s1_shiftNum.map(
-      shift => Cat(shift(log2Ceil(MaxInstNumPerBlock) - 1, MaybeRvcFineShiftBits), 0.U(MaybeRvcFineShiftBits.W))
-    )
-  )
-  private val s1_sramShiftMaybeRvc = VecInit(
-    VecInit(
-      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(0), s1_coarseShiftNum(0), leftShift = false.B),
-      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(1), s1_coarseShiftNum(1), leftShift = true.B)
-    ),
-    VecInit(
-      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(2), s1_coarseShiftNum(2), leftShift = !s1_shiftFlag),
-      shiftMaybeRvc(s1_fineShiftMaybeRvcMap(3), s1_coarseShiftNum(3), leftShift = true.B)
-    )
-  )
+  private val s1_shiftNum          = s1_maybeRvcShiftInfo.shiftNum
+  private val s1_shiftFlag         = s1_maybeRvcShiftInfo.shiftFlag
+  // rangeVec is used to mask the range for every cache line
+  private val s1_maybeRvcMaskVec   = s1_maybeRvcShiftInfo.maybeRvcMaskVec
+  private val s1_sramShiftMaybeRvc = s1_maybeRvcShiftInfo.sramShiftMaybeRvc
 
   private val s1_wayMask = VecInit(s1_wayLookupEntry.map(_.waymask))
 
@@ -249,8 +225,6 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
       )
     })
   })
-
-  dontTouch(s1_hits)
 
   private val s1_data = VecInit((0 until MaxFetchReqNum).map { reqIdx =>
     VecInit((0 until DataBanks).map { bankIdx =>
@@ -464,17 +438,14 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
 
   io.toIfu.req.valid := s1_valid && s1_fetchFinish && !s1_flush
   io.toIfu.req.bits.maybeRvcMap :=
-    (s1_maybeRvcMapVec(0)(0) & s1_rangeVec(0)) |
-      (s1_maybeRvcMapVec(0)(1) & s1_rangeVec(1)) |
-      (s1_maybeRvcMapVec(1)(0) & s1_rangeVec(2)) |
-      (s1_maybeRvcMapVec(1)(1) & s1_rangeVec(3))
-  io.toIfu.req.bits.range  := s1_totalBlockRange
+    s1_maybeRvcMapVec.flatten.zip(s1_maybeRvcMaskVec.flatten).map { case (a, b) => a & b }.reduce(_ | _)
+  io.toIfu.req.bits.firstRange := s1_firstBlockRange
+  io.toIfu.req.bits.totalRange := s1_totalBlockRange
   io.toIfu.req.bits.info.zipWithIndex.foreach { case (req, i) =>
     req.valid            := s1_req(i).valid
     req.startVAddr       := s1_req(i).startVAddr
     req.ftqIdx           := s1_req(i).ftqIdx
     req.takenCfiOffset   := s1_req(i).takenCfiOffset
-    // req.range            := s1_totalBlockRange
     req.size             := s1_req(i).takenCfiOffset.bits +& 1.U
     req.data             := s1_data(i)
     req.perf_isCrossLine := s1_req(i).isCrossLine
