@@ -151,7 +151,6 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   private val endOffset = endOffsetVec(mispredIdx.bits)
 
   private val mispredIdxNext             = RegEnable(mispredIdx, io.req.valid)
-  private val fixedTakenNext             = RegEnable(fixedTaken, io.req.valid)
   private val finalIsRVCNext             = RegEnable(finalIsRVC, io.req.valid)
   private val finalAttributeNext         = RegEnable(finalAttribute, io.req.valid)
   private val invalidTakenNext           = RegEnable(finalInvalidTaken, io.req.valid)
@@ -180,7 +179,7 @@ class PredChecker(implicit p: Parameters) extends IfuModule {
   io.resp.stage2Out.checkerRedirect.bits.blockSel  := finalBlockSelNext
   io.resp.stage2Out.checkerRedirect.bits.isCrossBlockInstr := finalIsCrossBlockInstrNext
   io.resp.stage2Out.checkerRedirect.bits.invalidTaken      := invalidTakenNext
-  io.resp.stage2Out.checkerRedirect.bits.mispredPc         := finalPcNext
+  io.resp.stage2Out.checkerRedirect.bits.mispredPc         := finalPcNext.unGuard
   // FIXME: Not a reliable block-end marker; special cases may have only half a branch predicted.(invalidTaken)
   io.resp.stage2Out.checkerRedirect.bits.endOffset := endOffsetNext
 

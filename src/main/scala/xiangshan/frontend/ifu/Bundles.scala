@@ -60,9 +60,9 @@ class LastHalfEntry(implicit p: Parameters) extends IfuBundle {
 }
 
 class EndHalfRviInfo(implicit p: Parameters) extends IfuBundle {
-  val isHalfRvi: Bool       = Bool()
-  val pc:        PrunedAddr = PrunedAddr(VAddrBits)
-  val data:      UInt       = UInt(16.W)
+  val isHalfRvi: Bool      = Bool()
+  val pc:        GuardedPc = GuardedPc()
+  val data:      UInt      = UInt(16.W)
 }
 
 class InstrIndexEntry(implicit p: Parameters) extends IfuBundle {
@@ -147,16 +147,16 @@ class Instruction(implicit p: Parameters) extends IfuBundle with HasICacheParame
 }
 
 class PredCheckRedirect(implicit p: Parameters) extends IfuBundle {
-  val target:       GuardedPc       = GuardedPc()
-  val misIdx:       Valid[UInt]     = Valid(UInt(log2Ceil(IBufferEnqueueWidth).W))
-  val taken:        Bool            = Bool()
-  val invalidTaken: Bool            = Bool()
-  val isRVC:        Bool            = Bool()
-  val blockSel:     Bool            = Bool()
-  val attribute:    BranchAttribute = new BranchAttribute
-  val mispredPc:    Pc              = Pc()
-  val endOffset:    UInt            = UInt(FetchBlockInstOffsetWidth.W)
-  val isCrossBlockInstr: Bool       = Bool()
+  val target:            GuardedPc       = GuardedPc()
+  val misIdx:            Valid[UInt]     = Valid(UInt(log2Ceil(IBufferEnqueueWidth).W))
+  val taken:             Bool            = Bool()
+  val invalidTaken:      Bool            = Bool()
+  val isRVC:             Bool            = Bool()
+  val blockSel:          Bool            = Bool()
+  val attribute:         BranchAttribute = new BranchAttribute
+  val mispredPc:         Pc              = Pc()
+  val endOffset:         UInt            = UInt(FetchBlockInstOffsetWidth.W)
+  val isCrossBlockInstr: Bool            = Bool()
 }
 
 /* ***** DB ***** */
