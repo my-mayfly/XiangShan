@@ -27,7 +27,7 @@ import xiangshan.frontend.Pc
 import xiangshan.frontend.bpu.BranchAttribute
 import xiangshan.frontend.ftq.FtqPtr
 import xiangshan.frontend.ibuffer.IBufPtr
-import xiangshan.frontend.icache.FetchBlocktoIfuReq
+import xiangshan.frontend.icache.FetchBlockInfo
 import xiangshan.frontend.icache.HasICacheParameters
 import xiangshan.frontend.icache.MainPipeToIfuReq
 
@@ -60,9 +60,8 @@ class LastHalfEntry(implicit p: Parameters) extends IfuBundle {
 }
 
 class EndHalfRviInfo(implicit p: Parameters) extends IfuBundle {
-  val isHalfRvi: Bool      = Bool()
-  val pc:        GuardedPc = GuardedPc()
-  val data:      UInt      = UInt(16.W)
+  val pc:   GuardedPc = GuardedPc()
+  val data: UInt      = UInt(16.W)
 }
 
 class InstrIndexEntry(implicit p: Parameters) extends IfuBundle {
@@ -82,7 +81,7 @@ class FetchBlock(implicit p: Parameters) extends IfuBundle {
 
   def pcUpperBits: UInt = startVAddr(GuardedVAddrBits - 1, PcCutPoint)
 
-  def fromICacheReq(req: FetchBlocktoIfuReq): FetchBlock = {
+  def fromICacheReq(req: FetchBlockInfo): FetchBlock = {
     valid          := req.valid
     ftqIdx         := req.ftqIdx
     startVAddr     := req.startVAddr
@@ -101,7 +100,7 @@ class IfuData(implicit p: Parameters) extends IfuBundle with HasICacheParameters
   val blockSel:    UInt      = UInt(FetchBlockInstNum.W)
 
   def fromICacheReq(req: MainPipeToIfuReq): IfuData = {
-    val reqStartOffset = req.info.map(_.startVAddr(log2Ceil(ICacheLineBytes / 2), 1))
+    val reqStartOffset = req.info.map(_.startVAddr(log2Ceil(ICacheLineBytes / instBytes), 1))
 
     def getDataIndex(i: Int): (Bool, UInt, UInt) = {
       val fromReq0 = i.U < req.info(0).size
@@ -185,9 +184,7 @@ class IfuRedirectInternal(implicit p: Parameters) extends IfuBundle {
   val instrCount:     UInt    = UInt(log2Ceil(FetchBlockInstNum + 1).W)
   val prevIBufEnqPtr: IBufPtr = new IBufPtr
   // A fallthrough does not always correspond to a half RVI instruction.
-  val isHalfInstr: Bool      = Bool()
-  val halfPc:      GuardedPc = GuardedPc()
-  val halfData:    UInt      = UInt(16.W)
+  val halfRviInfo: Valid[EndHalfRviInfo] = Valid(new EndHalfRviInfo)
 }
 
 class InstrCompactBundle(width: Int)(implicit p: Parameters) extends IfuBundle {
